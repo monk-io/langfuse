@@ -14,6 +14,15 @@
       "cache": true,
       "outputLogs": "errors-only"
     },
+    "skills:generate": {
+      "inputs": [
+        "scripts/in-app-agent/generate-skill-index.mjs",
+        "src/ee/features/in-app-agent/skills/skills/langfuse/references/**"
+      ],
+      "outputs": ["src/ee/features/in-app-agent/server/skillIndex.generated.ts"],
+      "cache": true,
+      "outputLogs": "errors-only"
+    },
     "start": {
       "dependsOn": ["^start"]
     },
@@ -70,6 +79,54 @@
     "@langfuse/shared#db:seed:examples": {
       "cache": false,
       "outputLogs": "errors-only"
+    },
+    "web#build": {
+      "dependsOn": ["db:generate", "skills:generate", "^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "cache": true,
+      "outputLogs": "errors-only"
+    },
+    "web#build:check": {
+      "dependsOn": ["db:generate", "skills:generate", "^build"],
+      "outputs": [".next-check/**", "!.next-check/cache/**"],
+      "cache": true,
+      "outputLogs": "errors-only"
+    },
+    "web#build-storybook": {
+      "dependsOn": ["skills:generate", "^build"],
+      "outputs": ["storybook-static/**"],
+      "cache": true,
+      "outputLogs": "errors-only"
+    },
+    "web#dev": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["db:generate", "skills:generate"]
+    },
+    "web#lint": {
+      "dependsOn": [
+        "@repo/eslint-plugin#build",
+        "skills:generate",
+        "^build"
+      ],
+      "cache": true,
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "web#typecheck": {
+      "dependsOn": ["db:generate", "skills:generate", "^build"],
+      "cache": true,
+      "outputLogs": "errors-only",
+      "outputs": []
+    },
+    "web#test": {
+      "dependsOn": ["^test", "db:generate", "skills:generate"],
+      "cache": true
+    },
+    "web#test-storybook": {
+      "dependsOn": ["skills:generate", "^build"],
+      "cache": true,
+      "outputs": []
     },
     "lint": {
       "dependsOn": ["@repo/eslint-plugin#build", "^build"],

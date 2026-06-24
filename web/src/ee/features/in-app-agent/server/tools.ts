@@ -20,7 +20,15 @@ import {
 import z from "zod";
 import { TABLE_AGGREGATION_OPTIONS } from "@/src/utils/date-range-utils";
 import { ObservationLevelDomain, TracingSearchType } from "@langfuse/shared";
-import { IN_APP_AGENT_REDIRECT_TOOL_NAME } from "@/src/ee/features/in-app-agent/constants";
+import {
+  IN_APP_AGENT_READ_SKILL_TOOL_NAME,
+  IN_APP_AGENT_REDIRECT_TOOL_NAME,
+  IN_APP_AGENT_SEARCH_SKILLS_TOOL_NAME,
+} from "@/src/ee/features/in-app-agent/constants";
+import {
+  readLangfuseSkillIndex,
+  searchLangfuseSkillIndex,
+} from "@/src/ee/features/in-app-agent/server/skills";
 
 const InAppAgentRedirectDestinationSchema = z.enum([
   "dashboards",
@@ -39,6 +47,25 @@ const InAppAgentRedirectDestinationSchema = z.enum([
   "trace",
   "traces",
 ]);
+
+const InAppAgentSkillSearchInputSchema = z.object({
+  query: z.string().min(1).max(300),
+  limit: z.number().int().min(1).max(10).optional(),
+});
+
+const InAppAgentSkillReadInputSchema = z
+  .object({
+    id: z.string().min(1).max(80).optional(),
+    path: z.string().min(1).max(200).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.id && !value.path) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Provide either skill id or path.",
+      });
+    }
+  });
 
 const InAppAgentRedirectBaseSchema = z.object({
   label: z.string().min(1).max(80),
@@ -231,6 +258,29 @@ export function createRedirectActionTool({
     },
   });
 }
+
+export const searchLangfuseSkillsTool = createTool({
+  id: IN_APP_AGENT_SEARCH_SKILLS_TOOL_NAME,
+  description:
+    "Search Langfuse skills. Returns compact snippets and metadata. Use the id or path to read the full skill.",
+  inputSchema: InAppAgentSkillSearchInputSchema,
+  execute: async (input) => {
+    const parsedInput = InAppAgentSkillSearchInputSchema.parse(input);
+    return {
+      results: searchLangfuseSkillIndex(parsedInput),
+    };
+  },
+});
+
+export const readLangfuseSkillTool = createTool({
+  id: IN_APP_AGENT_READ_SKILL_TOOL_NAME,
+  description: "Read one Langfuse skill by id or path.",
+  inputSchema: InAppAgentSkillReadInputSchema,
+  execute: async (input) => {
+    const parsedInput = InAppAgentSkillReadInputSchema.parse(input);
+    return readLangfuseSkillIndex(parsedInput);
+  },
+});
 
 function getRedirectActionToolResult({
   input,

@@ -1,0 +1,3 @@
+[submodule "web/src/ee/features/in-app-agent/skills"]
+	path = web/src/ee/features/in-app-agent/skills
+	url = https://github.com/langfuse/skills.git

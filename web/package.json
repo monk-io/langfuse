@@ -26,7 +26,9 @@
     "test:e2e:server": "vitest run --project e2e-server",
     "build-trace": "dotenv -e ../.env -- next internal trace .next/trace-turbopack",
     "storybook": "dotenv -e ../.env -- storybook dev -p 6006",
-    "build-storybook": "dotenv -e ../.env -- storybook build"
+    "build-storybook": "dotenv -e ../.env -- storybook build",
+    "skills:generate": "node scripts/in-app-agent/generate-skill-index.mjs",
+    "skills:check": "node scripts/in-app-agent/generate-skill-index.mjs --check"
   },
   "dependencies": {
     "@ag-ui/client": "^0.0.52",
