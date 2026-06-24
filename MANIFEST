@@ -1,0 +1,7 @@
+REPO langfuse
+
+LOAD monk/langfuse.yaml
+LOAD monk/langfuse-example.yaml
+LOAD monk/langfuse-stack.yaml
+
+ENTRY langfuse/stack-local

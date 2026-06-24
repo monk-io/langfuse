@@ -1,0 +1,965 @@
+namespace: langfuse
+
+stack-postgres:
+  defines: runnable
+  metadata:
+    name: Langfuse Stack PostgreSQL
+    description: Secure private PostgreSQL database for the production-oriented Langfuse standalone stack.
+    tags: langfuse, postgres, database, standalone, production
+    website: https://www.postgresql.org/
+    source: https://github.com/postgres/postgres
+    publisher: monk.io
+    private: false
+  permitted-secrets:
+    langfuse-postgres-password: true
+  variables:
+    postgres-image-tag:
+      type: string
+      value: "17"
+      description: Public Docker Hub postgres image tag used by the standalone stack.
+    postgres-database:
+      type: string
+      value: langfuse
+      env: POSTGRES_DB
+      description: PostgreSQL database name created for Langfuse.
+    postgres-user:
+      type: string
+      value: langfuse
+      env: POSTGRES_USER
+      description: PostgreSQL user created for Langfuse.
+    postgres-password:
+      type: string
+      value: <- secret("langfuse-postgres-password")
+      env: POSTGRES_PASSWORD
+      description: Sensitive PostgreSQL password read from plain Monk secret langfuse-postgres-password before deploying the production stack.
+    timezone:
+      type: string
+      value: UTC
+      env: TZ
+      description: Container timezone; Langfuse requires PostgreSQL to run in UTC.
+    postgres-timezone:
+      type: string
+      value: UTC
+      env: PGTZ
+      description: PostgreSQL session timezone; Langfuse requires UTC.
+  containers:
+    postgres:
+      image: postgres
+      image-tag: <- $postgres-image-tag
+      restart: unless-stopped
+      paths:
+        - <- `${volume-path}/langfuse-stack-production/postgres:/var/lib/postgresql/data`
+  services:
+    postgres:
+      container: postgres
+      port: 5432
+      protocol: tcp
+      publish: false
+      description: Private PostgreSQL service consumed by Langfuse web and worker containers.
+stack-redis:
+  defines: runnable
+  metadata:
+    name: Langfuse Stack Redis
+    description: Secure private Redis queue and cache service for the production-oriented Langfuse standalone stack.
+    tags: langfuse, redis, cache, queue, standalone, production
+    website: https://redis.io/
+    source: https://github.com/redis/redis
+    publisher: monk.io
+    private: false
+  permitted-secrets:
+    langfuse-redis-password: true
+  variables:
+    redis-image-tag:
+      type: string
+      value: 7-alpine
+      description: Public Docker Hub redis image tag used by the standalone stack.
+    redis-password:
+      type: string
+      value: <- secret("langfuse-redis-password")
+      env: REDIS_AUTH
+      description: Sensitive Redis password read from plain Monk secret langfuse-redis-password before deploying the production stack.
+  containers:
+    redis:
+      image: redis
+      image-tag: <- $redis-image-tag
+      restart: unless-stopped
+      paths:
+        - <- `${volume-path}/langfuse-stack-production/redis:/data`
+      bash: redis-server --requirepass "$REDIS_AUTH" --appendonly yes --maxmemory-policy noeviction
+  services:
+    redis:
+      container: redis
+      port: 6379
+      protocol: tcp
+      publish: false
+      description: Private Redis service consumed by Langfuse web and worker containers.
+stack-clickhouse:
+  defines: runnable
+  metadata:
+    name: Langfuse Stack ClickHouse
+    description: Secure private single-node ClickHouse analytics store for the production-oriented Langfuse standalone stack.
+    tags: langfuse, clickhouse, analytics, standalone, production
+    website: https://clickhouse.com/
+    source: https://github.com/ClickHouse/ClickHouse
+    publisher: monk.io
+    private: false
+  permitted-secrets:
+    langfuse-clickhouse-password: true
+  variables:
+    clickhouse-image-tag:
+      type: string
+      value: 24.8-alpine
+      description: Public Docker Hub clickhouse/clickhouse-server image tag used by the standalone stack.
+    clickhouse-database:
+      type: string
+      value: default
+      env: CLICKHOUSE_DB
+      description: ClickHouse database initialized for Langfuse.
+    clickhouse-user:
+      type: string
+      value: clickhouse
+      env: CLICKHOUSE_USER
+      description: ClickHouse user initialized for Langfuse.
+    clickhouse-password:
+      type: string
+      value: <- secret("langfuse-clickhouse-password")
+      env: CLICKHOUSE_PASSWORD
+      description: Sensitive ClickHouse password read from plain Monk secret langfuse-clickhouse-password before deploying the production stack.
+    clickhouse-default-access-management:
+      type: string
+      value: "1"
+      env: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+      description: Enables SQL-driven access management for the initialized ClickHouse user.
+  containers:
+    clickhouse:
+      image: clickhouse/clickhouse-server
+      image-tag: <- $clickhouse-image-tag
+      restart: unless-stopped
+      paths:
+        - <- `${volume-path}/langfuse-stack-production/clickhouse/data:/var/lib/clickhouse`
+        - <- `${volume-path}/langfuse-stack-production/clickhouse/log:/var/log/clickhouse-server`
+  services:
+    http:
+      container: clickhouse
+      port: 8123
+      protocol: tcp
+      publish: false
+      description: Private ClickHouse HTTP service consumed by Langfuse.
+    native:
+      container: clickhouse
+      port: 9000
+      protocol: tcp
+      publish: false
+      description: Private ClickHouse native TCP service used for Langfuse migrations.
+stack-minio:
+  defines: runnable
+  metadata:
+    name: Langfuse Stack MinIO
+    description: Secure private S3-compatible object store for the production-oriented Langfuse standalone stack.
+    tags: langfuse, minio, s3, object-storage, standalone, production
+    website: https://min.io/
+    source: https://github.com/minio/minio
+    publisher: monk.io
+    private: false
+  permitted-secrets:
+    langfuse-minio-root-password: true
+  variables:
+    minio-image-tag:
+      type: string
+      value: latest
+      description: Public Docker Hub minio/minio image tag used by the standalone stack.
+    minio-root-user:
+      type: string
+      value: minio
+      env: MINIO_ROOT_USER
+      description: MinIO access key ID used by Langfuse.
+    minio-root-password:
+      type: string
+      value: <- secret("langfuse-minio-root-password")
+      env: MINIO_ROOT_PASSWORD
+      description: Sensitive MinIO root password read from plain Monk secret langfuse-minio-root-password before deploying the production stack.
+    minio-console-port:
+      type: int
+      value: 9001
+      env: MINIO_CONSOLE_PORT
+      description: MinIO management console port inside the container.
+    minio-bucket:
+      type: string
+      value: langfuse
+      env: MINIO_BUCKET
+      description: Bucket directory bootstrapped for Langfuse object storage.
+  containers:
+    minio:
+      image: minio/minio
+      image-tag: <- $minio-image-tag
+      restart: unless-stopped
+      paths:
+        - <- `${volume-path}/langfuse-stack-production/minio:/data`
+      bash: sh -c 'mkdir -p "/data/$MINIO_BUCKET" && minio server --address ":9000" --console-address ":$MINIO_CONSOLE_PORT" /data'
+  services:
+    api:
+      container: minio
+      port: 9000
+      protocol: tcp
+      publish: false
+      description: Private S3-compatible API endpoint consumed by Langfuse.
+    console:
+      container: minio
+      port: <- $minio-console-port
+      protocol: tcp
+      publish: false
+      description: Private MinIO management console endpoint for authenticated operators.
+stack-web:
+  defines: runnable
+  inherits: langfuse/web-base
+  metadata:
+    name: Langfuse Stack Web
+    description: Production-oriented Langfuse web service exposed only through Monk ingress and backed by private services.
+    tags: langfuse, llmops, observability, standalone, production, web
+    website: https://langfuse.com/
+    source: https://github.com/langfuse/langfuse
+    publisher: monk.io
+    private: false
+  permitted-secrets:
+    langfuse-nextauth-secret: true
+    langfuse-salt: true
+    langfuse-encryption-key: true
+    langfuse-postgres-password: true
+    langfuse-clickhouse-password: true
+    langfuse-redis-password: true
+    langfuse-minio-root-password: true
+  variables:
+    nextauth-url:
+      type: string
+      value: https://langfuse.localhost
+      env: NEXTAUTH_URL
+      description: Public production URL used by NextAuth callbacks; set to the real ingress hostname when inheriting.
+    nextauth-secret:
+      type: string
+      value: <- secret("langfuse-nextauth-secret")
+      env: NEXTAUTH_SECRET
+      description: Sensitive NextAuth secret read from plain Monk secret langfuse-nextauth-secret before deploying the production stack.
+    salt:
+      type: string
+      value: <- secret("langfuse-salt")
+      env: SALT
+      description: Sensitive API key hashing salt read from plain Monk secret langfuse-salt before deploying the production stack.
+    encryption-key:
+      type: string
+      value: <- secret("langfuse-encryption-key")
+      env: ENCRYPTION_KEY
+      description: Sensitive 64-character hex encryption key read from plain Monk secret langfuse-encryption-key before deploying the production stack.
+    postgres-host:
+      type: string
+      value: <- connection-hostname("database")
+      description: PostgreSQL hostname resolved from Monk connection.
+    postgres-port:
+      type: int
+      value: <- connection-port("database")
+      description: PostgreSQL port resolved from Monk connection.
+    postgres-user:
+      type: string
+      value: langfuse
+      description: PostgreSQL user used by the standalone stack.
+    postgres-database:
+      type: string
+      value: langfuse
+      description: PostgreSQL database used by the standalone stack.
+    postgres-password:
+      type: string
+      value: <- secret("langfuse-postgres-password")
+      description: Sensitive PostgreSQL password read from plain Monk secret langfuse-postgres-password before deploying the production stack. Use a URL-safe value.
+    database-url:
+      type: string
+      value: <- `postgresql://${postgres-user}:${postgres-password}@${postgres-host}:${postgres-port}/${postgres-database}`
+      env: DATABASE_URL
+      description: PostgreSQL connection URL built from the standalone stack database connection.
+    clickhouse-host:
+      type: string
+      value: <- connection-hostname("clickhouse-http")
+      description: ClickHouse HTTP hostname resolved from Monk connection.
+    clickhouse-native-host:
+      type: string
+      value: <- connection-hostname("clickhouse-native")
+      description: ClickHouse native hostname resolved from Monk connection.
+    clickhouse-http-port:
+      type: int
+      value: <- connection-port("clickhouse-http")
+      description: ClickHouse HTTP port resolved from Monk connection.
+    clickhouse-native-port:
+      type: int
+      value: <- connection-port("clickhouse-native")
+      description: ClickHouse native TCP port resolved from Monk connection.
+    clickhouse-password:
+      type: string
+      value: <- secret("langfuse-clickhouse-password")
+      env: CLICKHOUSE_PASSWORD
+      description: Sensitive ClickHouse password read from plain Monk secret langfuse-clickhouse-password before deploying the production stack.
+    clickhouse-migration-url:
+      type: string
+      value: <- `clickhouse://${clickhouse-native-host}:${clickhouse-native-port}`
+      env: CLICKHOUSE_MIGRATION_URL
+      description: ClickHouse native protocol URL built from Monk connection.
+    clickhouse-url:
+      type: string
+      value: <- `http://${clickhouse-host}:${clickhouse-http-port}`
+      env: CLICKHOUSE_URL
+      description: ClickHouse HTTP URL built from Monk connection.
+    redis-host:
+      type: string
+      value: <- connection-hostname("redis")
+      env: REDIS_HOST
+      description: Redis hostname resolved from Monk connection.
+    redis-port:
+      type: int
+      value: <- connection-port("redis")
+      env: REDIS_PORT
+      description: Redis port resolved from Monk connection.
+    redis-auth:
+      type: string
+      value: <- secret("langfuse-redis-password")
+      env: REDIS_AUTH
+      description: Sensitive Redis password read from plain Monk secret langfuse-redis-password before deploying the production stack.
+    s3-access-key-id:
+      type: string
+      value: minio
+      description: MinIO access key ID used by Langfuse.
+    s3-secret-access-key:
+      type: string
+      value: <- secret("langfuse-minio-root-password")
+      description: Sensitive MinIO password read from plain Monk secret langfuse-minio-root-password before deploying the production stack.
+    minio-host:
+      type: string
+      value: <- connection-hostname("minio")
+      description: MinIO hostname resolved from Monk connection.
+    minio-port:
+      type: int
+      value: <- connection-port("minio")
+      description: MinIO S3 API port resolved from Monk connection.
+    s3-endpoint:
+      type: string
+      value: <- `http://${minio-host}:${minio-port}`
+      description: S3-compatible API endpoint built from Monk connection.
+  services:
+    http:
+      container: web
+      port: <- $web-port
+      protocol: tcp
+      description: Langfuse web HTTP service exposed through Monk ingress for production deployments.
+      ingress-routes:
+        web:
+          path-prefix: /
+  connections:
+    database:
+      target: langfuse/stack-postgres
+      service: postgres
+      description: PostgreSQL backing service connected to the production web container.
+    redis:
+      target: langfuse/stack-redis
+      service: redis
+      description: Redis backing service connected to the production web container.
+    clickhouse-http:
+      target: langfuse/stack-clickhouse
+      service: http
+      description: ClickHouse HTTP backing service connected to the production web container.
+    clickhouse-native:
+      target: langfuse/stack-clickhouse
+      service: native
+      description: ClickHouse native TCP backing service connected to the production web container.
+    minio:
+      target: langfuse/stack-minio
+      service: api
+      description: MinIO S3 API backing service connected to the production web container.
+  depends:
+    wait-for:
+      runnables:
+        - langfuse/stack-postgres
+        - langfuse/stack-redis
+        - langfuse/stack-clickhouse
+        - langfuse/stack-minio
+
+stack-worker:
+  defines: runnable
+  inherits: langfuse/worker-base
+  metadata:
+    name: Langfuse Stack Worker
+    description: Production-oriented Langfuse worker backed by private PostgreSQL, ClickHouse, Redis, and MinIO services.
+    tags: langfuse, llmops, observability, standalone, production, worker
+    website: https://langfuse.com/
+    source: https://github.com/langfuse/langfuse
+    publisher: monk.io
+    private: false
+  permitted-secrets:
+    langfuse-nextauth-secret: true
+    langfuse-salt: true
+    langfuse-encryption-key: true
+    langfuse-postgres-password: true
+    langfuse-clickhouse-password: true
+    langfuse-redis-password: true
+    langfuse-minio-root-password: true
+  variables:
+    nextauth-url:
+      type: string
+      value: https://langfuse.localhost
+      env: NEXTAUTH_URL
+      description: Public production URL shared with the web container.
+    nextauth-secret:
+      type: string
+      value: <- secret("langfuse-nextauth-secret")
+      env: NEXTAUTH_SECRET
+      description: Sensitive NextAuth secret read from plain Monk secret langfuse-nextauth-secret before deploying the production stack.
+    salt:
+      type: string
+      value: <- secret("langfuse-salt")
+      env: SALT
+      description: Sensitive API key hashing salt read from plain Monk secret langfuse-salt before deploying the production stack.
+    encryption-key:
+      type: string
+      value: <- secret("langfuse-encryption-key")
+      env: ENCRYPTION_KEY
+      description: Sensitive 64-character hex encryption key read from plain Monk secret langfuse-encryption-key before deploying the production stack.
+    postgres-host:
+      type: string
+      value: <- connection-hostname("database")
+      description: PostgreSQL hostname resolved from Monk connection.
+    postgres-port:
+      type: int
+      value: <- connection-port("database")
+      description: PostgreSQL port resolved from Monk connection.
+    postgres-user:
+      type: string
+      value: langfuse
+      description: PostgreSQL user used by the standalone stack.
+    postgres-database:
+      type: string
+      value: langfuse
+      description: PostgreSQL database used by the standalone stack.
+    postgres-password:
+      type: string
+      value: <- secret("langfuse-postgres-password")
+      description: Sensitive PostgreSQL password read from plain Monk secret langfuse-postgres-password before deploying the production stack. Use a URL-safe value.
+    database-url:
+      type: string
+      value: <- `postgresql://${postgres-user}:${postgres-password}@${postgres-host}:${postgres-port}/${postgres-database}`
+      env: DATABASE_URL
+      description: PostgreSQL connection URL built from the standalone stack database connection.
+    clickhouse-host:
+      type: string
+      value: <- connection-hostname("clickhouse-http")
+      description: ClickHouse HTTP hostname resolved from Monk connection.
+    clickhouse-native-host:
+      type: string
+      value: <- connection-hostname("clickhouse-native")
+      description: ClickHouse native hostname resolved from Monk connection.
+    clickhouse-http-port:
+      type: int
+      value: <- connection-port("clickhouse-http")
+      description: ClickHouse HTTP port resolved from Monk connection.
+    clickhouse-native-port:
+      type: int
+      value: <- connection-port("clickhouse-native")
+      description: ClickHouse native TCP port resolved from Monk connection.
+    clickhouse-password:
+      type: string
+      value: <- secret("langfuse-clickhouse-password")
+      env: CLICKHOUSE_PASSWORD
+      description: Sensitive ClickHouse password read from plain Monk secret langfuse-clickhouse-password before deploying the production stack.
+    clickhouse-migration-url:
+      type: string
+      value: <- `clickhouse://${clickhouse-native-host}:${clickhouse-native-port}`
+      env: CLICKHOUSE_MIGRATION_URL
+      description: ClickHouse native protocol URL built from Monk connection.
+    clickhouse-url:
+      type: string
+      value: <- `http://${clickhouse-host}:${clickhouse-http-port}`
+      env: CLICKHOUSE_URL
+      description: ClickHouse HTTP URL built from Monk connection.
+    redis-host:
+      type: string
+      value: <- connection-hostname("redis")
+      env: REDIS_HOST
+      description: Redis hostname resolved from Monk connection.
+    redis-port:
+      type: int
+      value: <- connection-port("redis")
+      env: REDIS_PORT
+      description: Redis port resolved from Monk connection.
+    redis-auth:
+      type: string
+      value: <- secret("langfuse-redis-password")
+      env: REDIS_AUTH
+      description: Sensitive Redis password read from plain Monk secret langfuse-redis-password before deploying the production stack.
+    s3-access-key-id:
+      type: string
+      value: minio
+      description: MinIO access key ID used by Langfuse.
+    s3-secret-access-key:
+      type: string
+      value: <- secret("langfuse-minio-root-password")
+      description: Sensitive MinIO password read from plain Monk secret langfuse-minio-root-password before deploying the production stack.
+    minio-host:
+      type: string
+      value: <- connection-hostname("minio")
+      description: MinIO hostname resolved from Monk connection.
+    minio-port:
+      type: int
+      value: <- connection-port("minio")
+      description: MinIO S3 API port resolved from Monk connection.
+    s3-endpoint:
+      type: string
+      value: <- `http://${minio-host}:${minio-port}`
+      description: S3-compatible API endpoint built from Monk connection.
+  connections:
+    database:
+      target: langfuse/stack-postgres
+      service: postgres
+      description: PostgreSQL backing service connected to the production worker.
+    redis:
+      target: langfuse/stack-redis
+      service: redis
+      description: Redis backing service connected to the production worker.
+    clickhouse-http:
+      target: langfuse/stack-clickhouse
+      service: http
+      description: ClickHouse HTTP backing service connected to the production worker.
+    clickhouse-native:
+      target: langfuse/stack-clickhouse
+      service: native
+      description: ClickHouse native TCP backing service connected to the production worker.
+    minio:
+      target: langfuse/stack-minio
+      service: api
+      description: MinIO S3 API backing service connected to the production worker.
+  depends:
+    wait-for:
+      runnables:
+        - langfuse/stack-postgres
+        - langfuse/stack-redis
+        - langfuse/stack-clickhouse
+        - langfuse/stack-minio
+
+stack:
+  defines: process-group
+  metadata:
+    name: Langfuse Standalone Stack
+    description: Secure production-oriented self-hosted Langfuse stack with PostgreSQL, ClickHouse, Redis, MinIO, web, and worker services. Only the authenticated web application is exposed via ingress.
+    tags: langfuse, llmops, observability, standalone, production
+    website: https://langfuse.com/
+    source: https://github.com/langfuse/langfuse
+    publisher: monk.io
+    private: false
+  runnable-list:
+    - langfuse/stack-postgres
+    - langfuse/stack-redis
+    - langfuse/stack-clickhouse
+    - langfuse/stack-minio
+    - langfuse/stack-web
+    - langfuse/stack-worker
+
+stack-local-postgres:
+  defines: runnable
+  inherits: langfuse/stack-postgres
+  metadata:
+    name: Langfuse Local Stack PostgreSQL
+    description: Local verification PostgreSQL flavor for the Langfuse standalone stack.
+    tags: langfuse, postgres, database, standalone, local
+    website: https://www.postgresql.org/
+    source: https://github.com/postgres/postgres
+    publisher: monk.io
+    private: false
+  variables:
+    postgres-password:
+      type: string
+      value: langfuse-local-postgres-password-2026
+      env: POSTGRES_PASSWORD
+      description: Sensitive generated PostgreSQL password used only by the local stack flavor.
+
+stack-local-redis:
+  defines: runnable
+  inherits: langfuse/stack-redis
+  metadata:
+    name: Langfuse Local Stack Redis
+    description: Local verification Redis flavor for the Langfuse standalone stack.
+    tags: langfuse, redis, cache, queue, standalone, local
+    website: https://redis.io/
+    source: https://github.com/redis/redis
+    publisher: monk.io
+    private: false
+  variables:
+    redis-password:
+      type: string
+      value: langfuse-local-redis-password-2026
+      env: REDIS_AUTH
+      description: Sensitive generated Redis password used only by the local stack flavor.
+
+stack-local-clickhouse:
+  defines: runnable
+  inherits: langfuse/stack-clickhouse
+  metadata:
+    name: Langfuse Local Stack ClickHouse
+    description: Local verification ClickHouse flavor for the Langfuse standalone stack.
+    tags: langfuse, clickhouse, analytics, standalone, local
+    website: https://clickhouse.com/
+    source: https://github.com/ClickHouse/ClickHouse
+    publisher: monk.io
+    private: false
+  variables:
+    clickhouse-password:
+      type: string
+      value: langfuse-local-clickhouse-password-2026
+      env: CLICKHOUSE_PASSWORD
+      description: Sensitive generated ClickHouse password used only by the local stack flavor.
+
+stack-local-minio:
+  defines: runnable
+  inherits: langfuse/stack-minio
+  metadata:
+    name: Langfuse Local Stack MinIO
+    description: Local verification MinIO flavor for the Langfuse standalone stack.
+    tags: langfuse, minio, s3, object-storage, standalone, local
+    website: https://min.io/
+    source: https://github.com/minio/minio
+    publisher: monk.io
+    private: false
+  variables:
+    minio-root-password:
+      type: string
+      value: langfuse-local-minio-password-2026
+      env: MINIO_ROOT_PASSWORD
+      description: Sensitive generated MinIO root password used only by the local stack flavor.
+
+stack-local-web:
+  defines: runnable
+  inherits: langfuse/web-base
+  metadata:
+    name: Langfuse Local Stack Web
+    description: Local verification Langfuse web flavor with a published non-privileged host port because Monk ingress is unavailable locally.
+    tags: langfuse, llmops, observability, standalone, local, web
+    website: https://langfuse.com/
+    source: https://github.com/langfuse/langfuse
+    publisher: monk.io
+    private: false
+  variables:
+    nextauth-url:
+      type: string
+      value: http://127.0.0.1:38080
+      env: NEXTAUTH_URL
+      description: Local URL used by the stack-local flavor.
+    nextauth-secret:
+      type: string
+      value: langfuse-local-nextauth-secret-2026
+      env: NEXTAUTH_SECRET
+      description: Sensitive generated NextAuth secret used only by the local stack flavor.
+    salt:
+      type: string
+      value: langfuse-local-salt-2026
+      env: SALT
+      description: Sensitive generated API key salt used only by the local stack flavor.
+    encryption-key:
+      type: string
+      value: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+      env: ENCRYPTION_KEY
+      description: Sensitive local-only 64-character hex encryption key for the stack-local flavor.
+    postgres-host:
+      type: string
+      value: <- connection-hostname("database")
+      description: PostgreSQL hostname resolved from Monk connection.
+    postgres-port:
+      type: int
+      value: <- connection-port("database")
+      description: PostgreSQL port resolved from Monk connection.
+    postgres-user:
+      type: string
+      value: langfuse
+      description: PostgreSQL user used by the local stack.
+    postgres-database:
+      type: string
+      value: langfuse
+      description: PostgreSQL database used by the local stack.
+    postgres-password:
+      type: string
+      value: langfuse-local-postgres-password-2026
+      description: Sensitive generated PostgreSQL password shared with the local stack database.
+    database-url:
+      type: string
+      value: <- `postgresql://${postgres-user}:${postgres-password}@${postgres-host}:${postgres-port}/${postgres-database}`
+      env: DATABASE_URL
+      description: PostgreSQL connection URL built from the local stack database connection.
+    clickhouse-host:
+      type: string
+      value: <- connection-hostname("clickhouse-http")
+      description: ClickHouse HTTP hostname resolved from Monk connection.
+    clickhouse-native-host:
+      type: string
+      value: <- connection-hostname("clickhouse-native")
+      description: ClickHouse native hostname resolved from Monk connection.
+    clickhouse-http-port:
+      type: int
+      value: <- connection-port("clickhouse-http")
+      description: ClickHouse HTTP port resolved from Monk connection.
+    clickhouse-native-port:
+      type: int
+      value: <- connection-port("clickhouse-native")
+      description: ClickHouse native TCP port resolved from Monk connection.
+    clickhouse-password:
+      type: string
+      value: langfuse-local-clickhouse-password-2026
+      env: CLICKHOUSE_PASSWORD
+      description: Sensitive generated ClickHouse password shared with the local stack ClickHouse service.
+    clickhouse-migration-url:
+      type: string
+      value: <- `clickhouse://${clickhouse-native-host}:${clickhouse-native-port}`
+      env: CLICKHOUSE_MIGRATION_URL
+      description: ClickHouse native protocol URL built from Monk connection.
+    clickhouse-url:
+      type: string
+      value: <- `http://${clickhouse-host}:${clickhouse-http-port}`
+      env: CLICKHOUSE_URL
+      description: ClickHouse HTTP URL built from Monk connection.
+    redis-host:
+      type: string
+      value: <- connection-hostname("redis")
+      env: REDIS_HOST
+      description: Redis hostname resolved from Monk connection.
+    redis-port:
+      type: int
+      value: <- connection-port("redis")
+      env: REDIS_PORT
+      description: Redis port resolved from Monk connection.
+    redis-auth:
+      type: string
+      value: langfuse-local-redis-password-2026
+      env: REDIS_AUTH
+      description: Sensitive generated Redis password shared with the local stack Redis service.
+    s3-access-key-id:
+      type: string
+      value: minio
+      description: MinIO access key ID used by the local stack.
+    s3-secret-access-key:
+      type: string
+      value: langfuse-local-minio-password-2026
+      description: Sensitive generated MinIO password shared with the local stack object store.
+    minio-host:
+      type: string
+      value: <- connection-hostname("minio")
+      description: MinIO hostname resolved from Monk connection.
+    minio-port:
+      type: int
+      value: <- connection-port("minio")
+      description: MinIO S3 API port resolved from Monk connection.
+    s3-endpoint:
+      type: string
+      value: <- `http://${minio-host}:${minio-port}`
+      description: S3-compatible API endpoint built from Monk connection.
+  services:
+    http:
+      container: web
+      port: <- $web-port
+      host-port: 38080
+      protocol: tcp
+      description: Local Langfuse web HTTP service published for external verification.
+  connections:
+    database:
+      target: langfuse/stack-local-postgres
+      service: postgres
+      description: PostgreSQL backing service connected to the local stack web container.
+    redis:
+      target: langfuse/stack-local-redis
+      service: redis
+      description: Redis backing service connected to the local stack web container.
+    clickhouse-http:
+      target: langfuse/stack-local-clickhouse
+      service: http
+      description: ClickHouse HTTP backing service connected to the local stack web container.
+    clickhouse-native:
+      target: langfuse/stack-local-clickhouse
+      service: native
+      description: ClickHouse native TCP backing service connected to the local stack web container.
+    minio:
+      target: langfuse/stack-local-minio
+      service: api
+      description: MinIO S3 API backing service connected to the local stack web container.
+  depends:
+    wait-for:
+      runnables:
+        - langfuse/stack-local-postgres
+        - langfuse/stack-local-redis
+        - langfuse/stack-local-clickhouse
+        - langfuse/stack-local-minio
+
+stack-local-worker:
+  defines: runnable
+  inherits: langfuse/worker-base
+  metadata:
+    name: Langfuse Local Stack Worker
+    description: Local verification Langfuse worker flavor with a published non-privileged host health port.
+    tags: langfuse, llmops, observability, standalone, local, worker
+    website: https://langfuse.com/
+    source: https://github.com/langfuse/langfuse
+    publisher: monk.io
+    private: false
+  variables:
+    nextauth-url:
+      type: string
+      value: http://127.0.0.1:38080
+      env: NEXTAUTH_URL
+      description: Local URL used by the stack-local worker.
+    nextauth-secret:
+      type: string
+      value: langfuse-local-nextauth-secret-2026
+      env: NEXTAUTH_SECRET
+      description: Sensitive generated NextAuth secret shared with the local stack web container.
+    salt:
+      type: string
+      value: langfuse-local-salt-2026
+      env: SALT
+      description: Sensitive generated API key salt shared with the local stack web container.
+    encryption-key:
+      type: string
+      value: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+      env: ENCRYPTION_KEY
+      description: Sensitive local-only encryption key shared with the local stack web container.
+    postgres-host:
+      type: string
+      value: <- connection-hostname("database")
+      description: PostgreSQL hostname resolved from Monk connection.
+    postgres-port:
+      type: int
+      value: <- connection-port("database")
+      description: PostgreSQL port resolved from Monk connection.
+    postgres-user:
+      type: string
+      value: langfuse
+      description: PostgreSQL user used by the local stack.
+    postgres-database:
+      type: string
+      value: langfuse
+      description: PostgreSQL database used by the local stack.
+    postgres-password:
+      type: string
+      value: langfuse-local-postgres-password-2026
+      description: Sensitive generated PostgreSQL password shared with the local stack database.
+    database-url:
+      type: string
+      value: <- `postgresql://${postgres-user}:${postgres-password}@${postgres-host}:${postgres-port}/${postgres-database}`
+      env: DATABASE_URL
+      description: PostgreSQL connection URL built from the local stack database connection.
+    clickhouse-host:
+      type: string
+      value: <- connection-hostname("clickhouse-http")
+      description: ClickHouse HTTP hostname resolved from Monk connection.
+    clickhouse-native-host:
+      type: string
+      value: <- connection-hostname("clickhouse-native")
+      description: ClickHouse native hostname resolved from Monk connection.
+    clickhouse-http-port:
+      type: int
+      value: <- connection-port("clickhouse-http")
+      description: ClickHouse HTTP port resolved from Monk connection.
+    clickhouse-native-port:
+      type: int
+      value: <- connection-port("clickhouse-native")
+      description: ClickHouse native TCP port resolved from Monk connection.
+    clickhouse-password:
+      type: string
+      value: langfuse-local-clickhouse-password-2026
+      env: CLICKHOUSE_PASSWORD
+      description: Sensitive generated ClickHouse password shared with the local stack ClickHouse service.
+    clickhouse-migration-url:
+      type: string
+      value: <- `clickhouse://${clickhouse-native-host}:${clickhouse-native-port}`
+      env: CLICKHOUSE_MIGRATION_URL
+      description: ClickHouse native protocol URL built from Monk connection.
+    clickhouse-url:
+      type: string
+      value: <- `http://${clickhouse-host}:${clickhouse-http-port}`
+      env: CLICKHOUSE_URL
+      description: ClickHouse HTTP URL built from Monk connection.
+    redis-host:
+      type: string
+      value: <- connection-hostname("redis")
+      env: REDIS_HOST
+      description: Redis hostname resolved from Monk connection.
+    redis-port:
+      type: int
+      value: <- connection-port("redis")
+      env: REDIS_PORT
+      description: Redis port resolved from Monk connection.
+    redis-auth:
+      type: string
+      value: langfuse-local-redis-password-2026
+      env: REDIS_AUTH
+      description: Sensitive generated Redis password shared with the local stack Redis service.
+    s3-access-key-id:
+      type: string
+      value: minio
+      description: MinIO access key ID used by the local stack.
+    s3-secret-access-key:
+      type: string
+      value: langfuse-local-minio-password-2026
+      description: Sensitive generated MinIO password shared with the local stack object store.
+    minio-host:
+      type: string
+      value: <- connection-hostname("minio")
+      description: MinIO hostname resolved from Monk connection.
+    minio-port:
+      type: int
+      value: <- connection-port("minio")
+      description: MinIO S3 API port resolved from Monk connection.
+    s3-endpoint:
+      type: string
+      value: <- `http://${minio-host}:${minio-port}`
+      description: S3-compatible API endpoint built from Monk connection.
+  services:
+    health:
+      container: worker
+      port: <- $worker-port
+      host-port: 38030
+      protocol: tcp
+      description: Local Langfuse worker health service published for external verification.
+  connections:
+    database:
+      target: langfuse/stack-local-postgres
+      service: postgres
+      description: PostgreSQL backing service connected to the local stack worker.
+    redis:
+      target: langfuse/stack-local-redis
+      service: redis
+      description: Redis backing service connected to the local stack worker.
+    clickhouse-http:
+      target: langfuse/stack-local-clickhouse
+      service: http
+      description: ClickHouse HTTP backing service connected to the local stack worker.
+    clickhouse-native:
+      target: langfuse/stack-local-clickhouse
+      service: native
+      description: ClickHouse native TCP backing service connected to the local stack worker.
+    minio:
+      target: langfuse/stack-local-minio
+      service: api
+      description: MinIO S3 API backing service connected to the local stack worker.
+  depends:
+    wait-for:
+      runnables:
+        - langfuse/stack-local-postgres
+        - langfuse/stack-local-redis
+        - langfuse/stack-local-clickhouse
+        - langfuse/stack-local-minio
+
+stack-local:
+  defines: process-group
+  metadata:
+    name: Langfuse Standalone Stack Local
+    description: Local deployment flavor of the Langfuse standalone stack with published non-privileged web and worker health ports for verification.
+    tags: langfuse, llmops, observability, standalone, local
+    website: https://langfuse.com/
+    source: https://github.com/langfuse/langfuse
+    publisher: monk.io
+    private: false
+  runnable-list:
+    - langfuse/stack-local-postgres
+    - langfuse/stack-local-redis
+    - langfuse/stack-local-clickhouse
+    - langfuse/stack-local-minio
+    - langfuse/stack-local-web
+    - langfuse/stack-local-worker
