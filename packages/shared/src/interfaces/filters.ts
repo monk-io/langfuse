@@ -322,6 +322,41 @@ export function getMandatoryFilterExpressionLeafFilters(
   );
 }
 
+/**
+ * Combine multiple {@link FilterInput}s into a single AND, flattening nested
+ * top-level AND groups (and flat arrays) so redundant `AND(AND(...))` wrappers
+ * never waste the depth budget. Returns a flat `FilterState` when every combined
+ * condition is a leaf (so the facet sidebar can still own it), a nested
+ * `FilterExpression` when any branch is a group, or `undefined` when nothing
+ * remains. Use this anywhere a user filter is AND-conjoined with mandatory
+ * predicates (managed-env default, page-scope filters, preserved leaves).
+ */
+export function combineFilterInputsWithAnd(
+  ...inputs: (FilterInputSchema | undefined)[]
+): FilterConditionSchema[] | FilterGroupSchema | FilterConditionSchema | undefined {
+  const conditions: FilterExpressionSchema[] = [];
+  for (const input of inputs) {
+    const expression = normalizeFilterExpressionInput(input);
+    if (!expression) continue;
+    if (expression.type === "group" && expression.operator === "AND") {
+      conditions.push(...expression.conditions);
+    } else {
+      conditions.push(expression);
+    }
+  }
+
+  if (conditions.length === 0) return undefined;
+
+  // All leaves → a flat FilterState array (sidebar-owned, codec stays delimited).
+  if (conditions.every((condition) => condition.type !== "group")) {
+    return conditions as FilterConditionSchema[];
+  }
+
+  if (conditions.length === 1) return conditions[0];
+
+  return { type: "group", operator: "AND", conditions };
+}
+
 const eventsTableStringOperator = z.union([
   z.enum(filterOperators.string),
   z.literal(FTS_MATCH_OPERATOR),
