@@ -243,16 +243,39 @@ describe("filter expression bounds", () => {
     expect(filterInput.safeParse(tooDeep).success).toBe(false);
   });
 
-  it("rejects an expression with too many nodes", () => {
+  it("counts leaf conditions, not the wrapping group (no off-by-one)", () => {
+    // Exactly MAX flat conditions must be ALLOWED — the normalized wrapping AND
+    // group does not count toward the condition cap.
+    const exact: FilterCondition[] = Array.from(
+      { length: MAX_FILTER_EXPRESSION_NODES },
+      (_, i) => leaf("name", `value-${i}`),
+    );
+    expect(
+      getFilterExpressionBoundsIssue(normalizeFilterExpressionInput(exact)),
+    ).toBeNull();
+    expect(filterInput.safeParse(exact).success).toBe(true);
+  });
+
+  it("rejects an expression with too many conditions", () => {
     const wide: FilterCondition[] = Array.from(
       { length: MAX_FILTER_EXPRESSION_NODES + 1 },
       (_, i) => leaf("name", `value-${i}`),
     );
-    // Flat array normalizes to one AND group: nodes = children + 1 > cap.
     expect(
       getFilterExpressionBoundsIssue(normalizeFilterExpressionInput(wide)),
     ).toMatch(/too many conditions/);
     expect(filterInput.safeParse(wide).success).toBe(false);
+  });
+
+  it("treats a single-branch OR as mandatory (stays in sync with SQL collapse)", () => {
+    const singletonOr: FilterExpression = {
+      type: "group",
+      operator: "OR",
+      conditions: [leaf("name", "alpha")],
+    };
+    expect(
+      getMandatoryFilterExpressionLeafFilters(singletonOr).map((f) => f.column),
+    ).toEqual(["name"]);
   });
 
   it("rejects oversized trees at the compiler boundary too", () => {

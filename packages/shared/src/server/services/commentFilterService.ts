@@ -513,8 +513,11 @@ export async function applyCommentFiltersToFilterInput({
 }): Promise<{
   filterState: FilterExpression | undefined;
   hasNoMatches: boolean;
-  matchingIds: string[] | null;
 }> {
+  // matchingIds is intentionally not surfaced: a nested rewrite resolves comment
+  // filters into `id any of [...]` leaves anywhere in the tree, so there is no
+  // single matching-id set to return (the flat applyCommentFilters keeps it for
+  // its own intersection step; this tree variant has no such consumer).
   const result = await rewriteCommentFiltersInExpression({
     filterExpression: normalizeFilterExpressionInput(filterState),
     prisma,
@@ -526,6 +529,5 @@ export async function applyCommentFiltersToFilterInput({
   return {
     filterState: result.expression,
     hasNoMatches: result.hasNoMatches,
-    matchingIds: result.matchingIds,
   };
 }

@@ -181,25 +181,27 @@ export const filterGroup: z.ZodType<FilterGroupSchema> = z.lazy(() =>
 
 /**
  * Bounds on a `filterExpression` tree ("bound the blast"). Depth counts nested
- * groups (a single AND/OR group is depth 1); nodes counts every group and leaf.
- * These protect ClickHouse and the recursive emitter/parser from pathological
- * input. They are enforced on {@link filterInput} (the v2 wire contract), so
- * existing flat `z.array(singleFilter)` consumers are unaffected.
+ * groups (a single AND/OR group is depth 1); the condition cap counts LEAF
+ * conditions only (group containers don't count), so a flat array of N filters
+ * — which normalizes to one wrapping AND group — caps at exactly N. These
+ * protect ClickHouse and the recursive emitter/parser from pathological input.
+ * They are enforced on {@link filterInput} (the v2 wire contract), so existing
+ * flat `z.array(singleFilter)` consumers are unaffected.
  */
 export const MAX_FILTER_EXPRESSION_DEPTH = 8;
 export const MAX_FILTER_EXPRESSION_NODES = 64;
 
 function measureFilterExpression(expression: FilterExpressionSchema): {
-  nodes: number;
+  leaves: number;
   depth: number;
 } {
   if (expression.type !== "group") {
-    return { nodes: 1, depth: 0 };
+    return { leaves: 1, depth: 0 };
   }
 
   const childMeasures = expression.conditions.map(measureFilterExpression);
   return {
-    nodes: 1 + childMeasures.reduce((sum, child) => sum + child.nodes, 0),
+    leaves: childMeasures.reduce((sum, child) => sum + child.leaves, 0),
     depth:
       1 + childMeasures.reduce((max, child) => Math.max(max, child.depth), 0),
   };
@@ -207,8 +209,8 @@ function measureFilterExpression(expression: FilterExpressionSchema): {
 
 /**
  * Returns a human-readable diagnostic when an expression exceeds the depth or
- * node bounds, or `null` when it is within bounds. Pure — reused by both the
- * zod refinement on {@link filterInput} and the server-side compiler.
+ * condition bounds, or `null` when it is within bounds. Pure — reused by both
+ * the zod refinement on {@link filterInput} and the server-side compiler.
  */
 export function getFilterExpressionBoundsIssue(
   expression?: FilterExpressionSchema,
@@ -217,13 +219,13 @@ export function getFilterExpressionBoundsIssue(
     return null;
   }
 
-  const { nodes, depth } = measureFilterExpression(expression);
+  const { leaves, depth } = measureFilterExpression(expression);
 
   if (depth > MAX_FILTER_EXPRESSION_DEPTH) {
     return `Filter is nested too deeply (max depth ${MAX_FILTER_EXPRESSION_DEPTH}).`;
   }
 
-  if (nodes > MAX_FILTER_EXPRESSION_NODES) {
+  if (leaves > MAX_FILTER_EXPRESSION_NODES) {
     return `Filter has too many conditions (max ${MAX_FILTER_EXPRESSION_NODES}).`;
   }
 
@@ -308,7 +310,10 @@ export function getMandatoryFilterExpressionLeafFilters(
     return [filterValue];
   }
 
-  if (filterValue.operator === "OR") {
+  // A multi-branch OR contributes no guaranteed predicate. A single-branch OR is
+  // semantically just its child (and the SQL emitter unwraps it), so it stays
+  // mandatory — keeping this in sync with applyCompiledFilterNode's collapse.
+  if (filterValue.operator === "OR" && filterValue.conditions.length !== 1) {
     return [];
   }
 

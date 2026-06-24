@@ -67,7 +67,10 @@ function collectMandatoryCompiledFilters(node: CompiledFilterNode): Filter[] {
     return [node];
   }
 
-  if (node.operator === "OR") {
+  // A multi-branch OR has no guaranteed predicate. A single-branch OR collapses
+  // to its unwrapped child in applyCompiledFilterNode, so it stays mandatory —
+  // keeping the optimization set in sync with the emitted SQL.
+  if (node.operator === "OR" && node.children.length !== 1) {
     return [];
   }
 

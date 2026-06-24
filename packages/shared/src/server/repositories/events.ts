@@ -599,12 +599,13 @@ async function getObservationsFromEventsTableInternal<T>(
     > => leafFilter.type === "positionInTrace",
   );
 
-  if (
-    allPositionFilters.length > 1 ||
-    (allPositionFilters.length === 1 && mandatoryPositionFilters.length !== 1)
-  ) {
+  // position-in-trace is resolved by a single CTE rewrite that can only express
+  // an AND-reachable (mandatory) filter. A position filter sitting under an OR
+  // cannot be expressed, so reject it. Duplicates within a conjunctive AND are
+  // allowed and fall back to the first (matching the legacy `.find()` path).
+  if (allPositionFilters.length !== mandatoryPositionFilters.length) {
     throw new InvalidRequestError(
-      "Nested or non-conjunctive position-in-trace filters are not supported on events queries.",
+      "position-in-trace filters cannot appear inside an OR group.",
     );
   }
 
