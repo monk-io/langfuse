@@ -26,6 +26,7 @@ import {
 } from "@/src/components/table/loading-cells";
 import { type LangfuseColumnDef } from "@/src/components/table/types";
 import {
+  combineFilterInputsWithAnd,
   type ObservationLevelType,
   type FilterState,
   type FilterInput,
@@ -503,32 +504,27 @@ export default function ObservationsEventsTable({
   // — the search bar syncs into it rather than replacing it. It may be a nested
   // tree (v2), so the page-scope filters (time range, userId, sessionId) are
   // AND-conjoined as an OUTER AND wrapping it, never spliced inside (which would
-  // widen a user OR). For a flat filter this is just an array concat.
+  // widen a user OR). combineFilterInputsWithAnd flattens AND-of-AND (so the
+  // depth budget isn't wasted) and stays a flat array for a flat filter.
   const pageScopeFilters: FilterState = dateRangeFilter
     .concat(userIdFilter)
     .concat(sessionIdFilter);
-  const combinedFilterState: FilterInput = Array.isArray(
-    queryFilter.effectiveFilterExpression,
-  )
-    ? queryFilter.effectiveFilterExpression.concat(pageScopeFilters)
-    : pageScopeFilters.length > 0
-      ? {
-          type: "group",
-          operator: "AND",
-          conditions: [
-            queryFilter.effectiveFilterExpression,
-            ...pageScopeFilters,
-          ],
-        }
-      : queryFilter.effectiveFilterExpression;
+  const combinedFilterState: FilterInput =
+    combineFilterInputsWithAnd(
+      queryFilter.effectiveFilterExpression,
+      pageScopeFilters,
+    ) ?? [];
 
   // Use external filter state if provided, otherwise use combined filter state
   const filterState: FilterInput = externalFilterState || combinedFilterState;
 
-  // Bulk actions (export, run-eval, add-to-dataset) consume a flat FilterState.
-  // A nested tree (cross-field OR) falls back to no user filter on that path —
-  // selection-based runs over specific rows are unaffected.
-  // TODO(LFE-10421 follow-up): widen batch actions to FilterInput.
+  // Bulk "select all matching" actions consume a flat FilterState; they cannot
+  // express a nested tree (cross-field OR / group). When an advanced filter is
+  // active we DISABLE those actions (see isAdvancedFilterActive) rather than
+  // ship an empty filter that would silently widen scope to every row.
+  // Selection-based actions over explicitly-checked rows stay enabled.
+  const isAdvancedFilterActive =
+    !externalFilterState && queryFilter.isAdvancedFilter === true;
   const batchActionFilterState: FilterState = Array.isArray(filterState)
     ? filterState
     : [];
@@ -677,6 +673,13 @@ export default function ObservationsEventsTable({
     : isTotalCountError
       ? "Could not count selected observations. Clear selection and try again."
       : undefined;
+  // "Select all matching" ships the filter to the backend, which can't yet
+  // express a nested tree — so block it when an advanced filter is active to
+  // avoid silently widening scope to every row. Explicit row selection (which
+  // ships ids, not the filter) stays enabled.
+  const selectAllBlockedByAdvancedFilter = selectAll && isAdvancedFilterActive;
+  const advancedFilterSelectAllReason =
+    "Select-all isn't available with an advanced (OR / grouped) filter yet — select specific rows, or switch to flat filters.";
   const tableActions: TableAction[] = [
     ...(hasTraceDeletionEntitlement
       ? [
@@ -705,6 +708,10 @@ export default function ObservationsEventsTable({
       description: "Add selected observations to an annotation queue.",
       targetLabel: "Annotation Queue",
       execute: handleAddToAnnotationQueue,
+      disabled: selectAllBlockedByAdvancedFilter,
+      disabledReason: selectAllBlockedByAdvancedFilter
+        ? advancedFilterSelectAllReason
+        : undefined,
       accessCheck: {
         scope: "annotationQueues:CUD",
       },
@@ -715,8 +722,10 @@ export default function ObservationsEventsTable({
       label: "Add to Dataset",
       description: "Add selected observations to a dataset",
       customDialog: true,
-      disabled: isSelectAllCountUnavailable,
-      disabledReason: selectAllCountUnavailableReason,
+      disabled: isSelectAllCountUnavailable || selectAllBlockedByAdvancedFilter,
+      disabledReason: selectAllBlockedByAdvancedFilter
+        ? advancedFilterSelectAllReason
+        : selectAllCountUnavailableReason,
       accessCheck: {
         scope: "datasets:CUD",
       },
@@ -728,8 +737,10 @@ export default function ObservationsEventsTable({
       description: "Run evaluations on selected observations.",
       customDialog: true,
       icon: <LightbulbIcon className="h-4 w-4 sm:mr-2" />,
-      disabled: isSelectAllCountUnavailable,
-      disabledReason: selectAllCountUnavailableReason,
+      disabled: isSelectAllCountUnavailable || selectAllBlockedByAdvancedFilter,
+      disabledReason: selectAllBlockedByAdvancedFilter
+        ? advancedFilterSelectAllReason
+        : selectAllCountUnavailableReason,
       accessCheck: {
         scope: "evalJob:CUD",
       },
@@ -1624,6 +1635,8 @@ export default function ObservationsEventsTable({
                     searchType,
                   }}
                   tableName={BatchExportTableName.Events}
+                  disabled={isAdvancedFilterActive}
+                  disabledReason="Export can't yet apply an advanced (OR / grouped) filter. Switch to flat filters to export."
                   key="batchExport"
                 />,
                 selectedObservationIds.length > 0 || selectAll ? (

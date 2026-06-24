@@ -13,24 +13,24 @@ const NEW_FILTERS: FilterState = [
 function setup(
   overrides: Partial<Parameters<typeof useEventsSearchBar>[0]> = {},
 ) {
-  const setFilterState = vi.fn();
+  const setFilterExpression = vi.fn();
   const setSearchQuery = vi.fn();
   const setSearchType = vi.fn();
   const { result } = renderHook(() =>
     useEventsSearchBar({
       projectId: "p",
       enabled: true,
-      filterState: [],
+      filterExpression: [],
       searchQuery: "refund",
       searchType: DEFAULT_SEARCH_TYPE,
       observed: undefined,
-      setFilterState,
+      setFilterExpression,
       setSearchQuery,
       setSearchType,
       ...overrides,
     }),
   );
-  return { result, setFilterState, setSearchQuery, setSearchType };
+  return { result, setFilterExpression, setSearchQuery, setSearchType };
 }
 
 describe("useEventsSearchBar.applyFilters", () => {
@@ -38,9 +38,9 @@ describe("useEventsSearchBar.applyFilters", () => {
     // The model gets the full bar text (with `refund` rendered inline) as
     // refine context and returns the COMPLETE updated FilterState. Applying it
     // must clear searchQuery, else the dropped free text re-derives back in.
-    const { result, setFilterState, setSearchQuery } = setup();
+    const { result, setFilterExpression, setSearchQuery } = setup();
     act(() => result.current.applyFilters(NEW_FILTERS));
-    expect(setFilterState).toHaveBeenCalledWith(NEW_FILTERS);
+    expect(setFilterExpression).toHaveBeenCalledWith(NEW_FILTERS);
     expect(setSearchQuery).toHaveBeenCalledWith(null);
   });
 

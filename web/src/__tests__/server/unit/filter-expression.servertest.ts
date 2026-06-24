@@ -1,4 +1,5 @@
 import {
+  combineFilterInputsWithAnd,
   filterExpression,
   filterInput,
   getFilterExpressionBoundsIssue,
@@ -285,5 +286,47 @@ describe("filter expression bounds", () => {
         testColumnMappings,
       ),
     ).toThrow(/nested too deeply/);
+  });
+});
+
+describe("combineFilterInputsWithAnd", () => {
+  const leafA = leaf("name", "a");
+  const leafB = leaf("environment", "prod");
+  const orTree: FilterExpression = {
+    type: "group",
+    operator: "OR",
+    conditions: [leaf("level", "ERROR"), leaf("level", "WARNING")],
+  };
+
+  it("returns a flat array when every combined condition is a leaf", () => {
+    expect(combineFilterInputsWithAnd([leafA], [leafB])).toEqual([
+      leafA,
+      leafB,
+    ]);
+  });
+
+  it("flattens AND-of-AND so the depth budget is not wasted", () => {
+    const innerAnd: FilterExpression = {
+      type: "group",
+      operator: "AND",
+      conditions: [leafA, leafB],
+    };
+    // innerAnd + a leaf must yield a single flat AND, not AND(AND(...), leaf).
+    expect(
+      combineFilterInputsWithAnd(innerAnd, [leaf("type", "SPAN")]),
+    ).toEqual([leafA, leafB, leaf("type", "SPAN")]);
+  });
+
+  it("wraps an OR tree in an outer AND with extra leaves (never inside the OR)", () => {
+    expect(combineFilterInputsWithAnd(orTree, [leafB])).toEqual({
+      type: "group",
+      operator: "AND",
+      conditions: [orTree, leafB],
+    });
+  });
+
+  it("collapses to the single branch and ignores empty inputs", () => {
+    expect(combineFilterInputsWithAnd(orTree, [], undefined)).toEqual(orTree);
+    expect(combineFilterInputsWithAnd([], undefined)).toBeUndefined();
   });
 });

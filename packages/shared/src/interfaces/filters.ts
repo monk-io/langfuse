@@ -333,7 +333,11 @@ export function getMandatoryFilterExpressionLeafFilters(
  */
 export function combineFilterInputsWithAnd(
   ...inputs: (FilterInputSchema | undefined)[]
-): FilterConditionSchema[] | FilterGroupSchema | FilterConditionSchema | undefined {
+):
+  | FilterConditionSchema[]
+  | FilterGroupSchema
+  | FilterConditionSchema
+  | undefined {
   const conditions: FilterExpressionSchema[] = [];
   for (const input of inputs) {
     const expression = normalizeFilterExpressionInput(input);

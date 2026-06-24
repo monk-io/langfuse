@@ -240,7 +240,7 @@ export function useEventsSearchBar({
         searchType: result.searchType,
       }).text,
     );
-  }, [store, projectId, mergeWithSkipped]);
+  }, [store, projectId]);
 
   return { store, commit, applyFilters };
 }

@@ -109,9 +109,9 @@ export async function applyCommentFilters({
 }> {
   // Extract comment filters from filterState
   const commentCountFilters = filterState.filter(
-    (f) =>
-      (f.type === "number" || f.type === "datetime") &&
-      f.column === "commentCount",
+    // commentCount is always a number column; the inner loop only handles
+    // `number`, so match number-only (a datetime variant can't reach the wire).
+    (f) => f.type === "number" && f.column === "commentCount",
   );
   const commentContentFilter = filterState.find(
     (f) => f.type === "string" && f.column === "commentContent",
@@ -133,8 +133,7 @@ export async function applyCommentFilters({
   const updatedFilterState = filterState.filter(
     (f) =>
       !(
-        ((f.type === "number" || f.type === "datetime") &&
-          f.column === "commentCount") ||
+        (f.type === "number" && f.column === "commentCount") ||
         (f.type === "string" && f.column === "commentContent")
       ),
   );
@@ -337,8 +336,7 @@ type CommentFilterRewriteResult = {
 
 function isCommentFilter(filter: z.infer<typeof singleFilter>): boolean {
   return (
-    ((filter.type === "number" || filter.type === "datetime") &&
-      filter.column === "commentCount") ||
+    (filter.type === "number" && filter.column === "commentCount") ||
     (filter.type === "string" && filter.column === "commentContent")
   );
 }

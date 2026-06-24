@@ -2,10 +2,11 @@ import type React from "react";
 import { useCallback, useMemo, useEffect, useState } from "react";
 import { StringParam, useQueryParam } from "use-query-params";
 import {
+  combineFilterInputsWithAnd,
   type FilterExpression,
   type FilterInput,
   type FilterState,
-  getFilterExpressionLeafFilters,
+  getMandatoryFilterExpressionLeafFilters,
   singleFilter,
   type SingleValueOption,
   type ColumnDefinition,
@@ -688,16 +689,16 @@ export function useSidebarFilterState(
   const effectiveFilterExpression: FilterInput = useMemo(() => {
     if (!isAdvancedFilter) return filterState;
     const tree = decodedFilterInput as FilterExpression;
-    const userAuthoredEnv = getFilterExpressionLeafFilters(tree).some(
+    // Only an AND-reachable (mandatory) env filter is a guaranteed constraint.
+    // An env filter that holds only inside an OR branch must NOT suppress the
+    // implicit hidden-env default, or hidden environments leak.
+    const userAuthoredEnv = getMandatoryFilterExpressionLeafFilters(tree).some(
       (leaf) => leaf.column === managedEnvironmentColumn,
     );
     const envDefaults = userAuthoredEnv ? [] : effectiveEnvironmentFilterState;
     if (envDefaults.length === 0) return tree;
-    return {
-      type: "group",
-      operator: "AND",
-      conditions: [tree, ...envDefaults],
-    };
+    // Outer AND, flattened so an already-AND tree doesn't nest (depth budget).
+    return combineFilterInputsWithAnd(tree, envDefaults) ?? tree;
   }, [
     isAdvancedFilter,
     decodedFilterInput,
