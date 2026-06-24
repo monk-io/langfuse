@@ -611,6 +611,79 @@ describe("Blob Storage Integration tRPC Router", () => {
     });
   });
 
+  describe("parquet (exportTuning)", () => {
+    it("persists parquet=true into the exportTuning column", async () => {
+      const { caller, project } = await prepare();
+
+      await caller.blobStorageIntegration.update({
+        projectId: project.id,
+        ...baseConfig,
+        parquet: true,
+      });
+
+      const stored = await prisma.blobStorageIntegration.findUnique({
+        where: { projectId: project.id },
+      });
+      expect(stored?.exportTuning).toStrictEqual({ parquet: true });
+    });
+
+    it("defaults to no exportTuning when parquet is omitted", async () => {
+      const { caller, project } = await prepare();
+
+      await caller.blobStorageIntegration.update({
+        projectId: project.id,
+        ...baseConfig,
+      });
+
+      const stored = await prisma.blobStorageIntegration.findUnique({
+        where: { projectId: project.id },
+      });
+      expect(stored?.exportTuning).toBeNull();
+    });
+
+    it("clears parquet but preserves other operator-set tuning knobs", async () => {
+      const { caller, project } = await prepare();
+
+      // Seed the row, then set tuning directly as an operator would.
+      await caller.blobStorageIntegration.update({
+        projectId: project.id,
+        ...baseConfig,
+        parquet: true,
+      });
+      await prisma.blobStorageIntegration.update({
+        where: { projectId: project.id },
+        data: { exportTuning: { parquet: true, gzipLevel: 1 } },
+      });
+
+      // Saving the form with parquet off must drop only the parquet key.
+      await caller.blobStorageIntegration.update({
+        projectId: project.id,
+        ...baseConfig,
+        parquet: false,
+      });
+
+      const stored = await prisma.blobStorageIntegration.findUnique({
+        where: { projectId: project.id },
+      });
+      expect(stored?.exportTuning).toStrictEqual({ gzipLevel: 1 });
+    });
+
+    it("round-trips the parquet toggle via get", async () => {
+      const { caller, project } = await prepare();
+
+      await caller.blobStorageIntegration.update({
+        projectId: project.id,
+        ...baseConfig,
+        parquet: true,
+      });
+
+      const result = await caller.blobStorageIntegration.get({
+        projectId: project.id,
+      });
+      expect(result?.config?.exportTuning).toStrictEqual({ parquet: true });
+    });
+  });
+
   describe("legacy blob export source cutoff gate", () => {
     afterEach(() => {
       vi.restoreAllMocks();

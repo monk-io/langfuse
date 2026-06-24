@@ -1,4 +1,4 @@
-import { type PrismaClient } from "@langfuse/shared/src/db";
+import { Prisma, type PrismaClient } from "@langfuse/shared/src/db";
 import {
   BlobStorageExportMode,
   BlobStorageIntegrationType,
@@ -31,7 +31,31 @@ type UpsertBlobStorageIntegrationInput = {
   exportSource?: AnalyticsIntegrationExportSource;
   exportFieldGroups?: ObservationFieldGroupFull[];
   compressed?: boolean;
+  // LFE-10463: Parquet export toggle, persisted into the `exportTuning` JSON
+  // column (merged with any operator-set knobs). `undefined` means the caller
+  // (e.g. the public REST API) does not manage the format, so the persisted
+  // tuning is left untouched.
+  parquet?: boolean;
 };
+
+// Merge the Parquet toggle into the existing `exportTuning` JSON, preserving any
+// other operator-set knobs (gzipLevel, partSizeBytes, …). Returns DbNull when
+// the resulting object would be empty so the column is cleared rather than left
+// with a stale `{ parquet: false }`.
+function mergeParquetIntoTuning(
+  raw: Prisma.JsonValue | null | undefined,
+  parquet: boolean,
+): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  const base =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? { ...(raw as Record<string, unknown>) }
+      : {};
+  if (parquet) base.parquet = true;
+  else delete base.parquet;
+  return Object.keys(base).length > 0
+    ? (base as unknown as Prisma.InputJsonValue)
+    : Prisma.DbNull;
+}
 
 function resolveExportStartDate(params: {
   exportMode: BlobStorageExportMode;
@@ -119,8 +143,21 @@ export async function upsertBlobStorageIntegration(params: {
   return prisma.$transaction(async (tx) => {
     const existing = await tx.blobStorageIntegration.findUnique({
       where: { projectId },
-      select: { exportMode: true, lastError: true, runStartedAt: true },
+      select: {
+        exportMode: true,
+        lastError: true,
+        runStartedAt: true,
+        exportTuning: true,
+      },
     });
+
+    // Only manage exportTuning when the caller passed an explicit parquet value
+    // (the form always does; the public REST API does not). Omitting the key on
+    // update preserves the persisted tuning; omitting on create leaves it null.
+    const exportTuningUpdate =
+      data.parquet === undefined
+        ? undefined
+        : mergeParquetIntoTuning(existing?.exportTuning, data.parquet);
 
     // Require secret key for new integrations (unless using host credentials)
     if (!existing) {
@@ -155,12 +192,18 @@ export async function upsertBlobStorageIntegration(params: {
       where: { projectId },
       create: {
         ...writeData,
+        ...(exportTuningUpdate !== undefined
+          ? { exportTuning: exportTuningUpdate }
+          : {}),
         exportSource: createExportSource,
         projectId,
         secretAccessKey: encryptedSecret,
       },
       update: {
         ...writeData,
+        ...(exportTuningUpdate !== undefined
+          ? { exportTuning: exportTuningUpdate }
+          : {}),
         // Only overwrite secretAccessKey when a new value is provided,
         // so partial updates don't wipe the existing encrypted secret.
         ...(encryptedSecret ? { secretAccessKey: encryptedSecret } : {}),

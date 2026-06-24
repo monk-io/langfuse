@@ -30,6 +30,7 @@ import {
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
 import {
   blobStorageIntegrationFormSchema,
+  parquetEnabledFromTuning,
   type BlobStorageIntegrationFormSchema,
   type BlobStorageSyncStatus,
 } from "@/src/features/blobstorage-integration/types";
@@ -328,6 +329,7 @@ const BlobStorageIntegrationSettingsForm = ({
         ? (state.exportFieldGroups as ObservationFieldGroupFull[])
         : [...OBSERVATION_FIELD_GROUPS_FULL],
       compressed: state?.compressed ?? true,
+      parquet: parquetEnabledFromTuning(state?.exportTuning),
     },
     disabled: isLoading,
   });
@@ -365,6 +367,7 @@ const BlobStorageIntegrationSettingsForm = ({
           ? (state.exportFieldGroups as ObservationFieldGroupFull[])
           : [...OBSERVATION_FIELD_GROUPS_FULL],
         compressed: state?.compressed ?? true,
+        parquet: parquetEnabledFromTuning(state?.exportTuning),
       },
       state ? { keepDirtyValues: true } : undefined,
     );
@@ -373,6 +376,7 @@ const BlobStorageIntegrationSettingsForm = ({
 
   const watchedExportMode = blobStorageForm.watch("exportMode");
   const watchedExportSource = blobStorageForm.watch("exportSource");
+  const watchedParquet = blobStorageForm.watch("parquet");
   const exportSourceOptions = getExportSourceOptions(
     state?.exportSource,
     availability,
@@ -700,7 +704,25 @@ const BlobStorageIntegrationSettingsForm = ({
             <FormItem>
               <FormLabel>File Type</FormLabel>
               <FormControl>
-                <Select value={field.value} onValueChange={field.onChange}>
+                {/* "PARQUET" is a synthetic select value, not a
+                    BlobStorageIntegrationFileType: it sets the separate
+                    `parquet` form field (persisted to `exportTuning`) while
+                    leaving `fileType` at its last row/JSONL value. */}
+                <Select
+                  value={watchedParquet ? "PARQUET" : field.value}
+                  onValueChange={(value) => {
+                    if (value === "PARQUET") {
+                      blobStorageForm.setValue("parquet", true, {
+                        shouldDirty: true,
+                      });
+                    } else {
+                      blobStorageForm.setValue("parquet", false, {
+                        shouldDirty: true,
+                      });
+                      field.onChange(value);
+                    }
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select file type" />
                   </SelectTrigger>
@@ -708,11 +730,14 @@ const BlobStorageIntegrationSettingsForm = ({
                     <SelectItem value="JSONL">JSONL</SelectItem>
                     <SelectItem value="CSV">CSV</SelectItem>
                     <SelectItem value="JSON">JSON</SelectItem>
+                    <SelectItem value="PARQUET">Parquet</SelectItem>
                   </SelectContent>
                 </Select>
               </FormControl>
               <FormDescription>
-                The file format for exported data.
+                {watchedParquet
+                  ? "Apache Parquet — columnar binary format, encoded and compressed by ClickHouse. Recommended for large exports. Self-hosted deployments require ClickHouse 25.11 or newer."
+                  : "The file format for exported data."}
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -952,26 +977,31 @@ const BlobStorageIntegrationSettingsForm = ({
           />
         )}
 
-        <FormField
-          control={blobStorageForm.control}
-          name="compressed"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Gzip Compression</FormLabel>
-              <FormControl>
-                <Switch
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                  className="mt-1 ml-4"
-                />
-              </FormControl>
-              <FormDescription>
-                Compress exported files with gzip (.csv.gz, .json.gz, .jsonl.gz)
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {/* Gzip is meaningless for Parquet (ClickHouse compresses it
+            internally); the worker ignores `compressed` on that path. */}
+        {!watchedParquet && (
+          <FormField
+            control={blobStorageForm.control}
+            name="compressed"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Gzip Compression</FormLabel>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    className="mt-1 ml-4"
+                  />
+                </FormControl>
+                <FormDescription>
+                  Compress exported files with gzip (.csv.gz, .json.gz,
+                  .jsonl.gz)
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={blobStorageForm.control}

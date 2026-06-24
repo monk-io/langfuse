@@ -50,7 +50,25 @@ export const blobStorageIntegrationFormSchemaBase = z.object({
     .array(z.enum(OBSERVATION_FIELD_GROUPS_FULL))
     .default([...OBSERVATION_FIELD_GROUPS_FULL]),
   compressed: z.boolean().default(true),
+  // LFE-10463: surface the ClickHouse-native Parquet export path. Persisted in
+  // the `exportTuning` JSON column rather than as its own `fileType`; when true
+  // the worker overrides `fileType` and `compressed` (Parquet compresses
+  // internally) — see `blob-export-tuning.ts`.
+  parquet: z.boolean().default(false),
 });
+
+// Reads the persisted `exportTuning` JSON column (client-safe, no server deps)
+// to surface the Parquet toggle in the settings form. Mirrors the worker-side
+// `resolveBlobExportTuning` parquet semantics: anything that is not an object
+// with `parquet === true` is treated as off.
+export function parquetEnabledFromTuning(exportTuning: unknown): boolean {
+  return (
+    typeof exportTuning === "object" &&
+    exportTuning !== null &&
+    !Array.isArray(exportTuning) &&
+    (exportTuning as Record<string, unknown>).parquet === true
+  );
+}
 
 export const blobStorageIntegrationFormSchema =
   blobStorageIntegrationFormSchemaBase
