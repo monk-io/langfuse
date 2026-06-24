@@ -106,6 +106,13 @@ export interface QueryFilter {
   clearAll: () => void;
   isFiltered: boolean;
   setFilterState: (filters: FilterState) => void;
+  /**
+   * The active filter is a nested expression (cross-field OR / bracket group)
+   * the flat facet sidebar cannot represent (Search/Filter v2). When true the
+   * facets are replaced by a read-only notice — the search bar is the editor for
+   * that filter; "Clear all" still returns to the flat facet sidebar.
+   */
+  isAdvancedFilter?: boolean;
 }
 
 interface DataTableControlsProps {
@@ -188,155 +195,165 @@ export function DataTableControls({
         </div>
       </div>
       <div className="pb-10">
-        <Accordion
-          type="multiple"
-          className="w-full"
-          value={queryFilter.expanded}
-          onValueChange={queryFilter.onExpandedChange}
-        >
-          {queryFilter.filters.map((filter) => {
-            if (filter.type === "categorical") {
-              return (
-                <CategoricalFacet
-                  key={filter.column}
-                  filterKey={filter.column}
-                  label={filter.label}
-                  tooltip={filter.tooltip}
-                  help={filter.help}
-                  expanded={filter.expanded}
-                  options={filter.options}
-                  counts={filter.counts}
-                  displayByValue={filter.displayByValue}
-                  loading={filter.loading}
-                  value={filter.value}
-                  onChange={filter.onChange}
-                  onOnlyChange={filter.onOnlyChange}
-                  renderIcon={filter.renderIcon}
-                  isActive={filter.isActive}
-                  onReset={filter.onReset}
-                  operator={filter.operator}
-                  onOperatorChange={filter.onOperatorChange}
-                  textFilters={filter.textFilters}
-                  onTextFilterAdd={filter.onTextFilterAdd}
-                  onTextFilterRemove={filter.onTextFilterRemove}
-                  isDisabled={filter.isDisabled}
-                  disabledReason={filter.disabledReason}
-                />
-              );
-            }
+        {queryFilter.isAdvancedFilter ? (
+          <div className="text-muted-foreground px-3 py-4 text-xs leading-relaxed">
+            An advanced filter (OR / grouped conditions) is active. It
+            can&apos;t be shown as facets here — edit it in the search bar
+            above, or use
+            <span className="font-medium"> Clear all</span> to return to the
+            facet filters.
+          </div>
+        ) : (
+          <Accordion
+            type="multiple"
+            className="w-full"
+            value={queryFilter.expanded}
+            onValueChange={queryFilter.onExpandedChange}
+          >
+            {queryFilter.filters.map((filter) => {
+              if (filter.type === "categorical") {
+                return (
+                  <CategoricalFacet
+                    key={filter.column}
+                    filterKey={filter.column}
+                    label={filter.label}
+                    tooltip={filter.tooltip}
+                    help={filter.help}
+                    expanded={filter.expanded}
+                    options={filter.options}
+                    counts={filter.counts}
+                    displayByValue={filter.displayByValue}
+                    loading={filter.loading}
+                    value={filter.value}
+                    onChange={filter.onChange}
+                    onOnlyChange={filter.onOnlyChange}
+                    renderIcon={filter.renderIcon}
+                    isActive={filter.isActive}
+                    onReset={filter.onReset}
+                    operator={filter.operator}
+                    onOperatorChange={filter.onOperatorChange}
+                    textFilters={filter.textFilters}
+                    onTextFilterAdd={filter.onTextFilterAdd}
+                    onTextFilterRemove={filter.onTextFilterRemove}
+                    isDisabled={filter.isDisabled}
+                    disabledReason={filter.disabledReason}
+                  />
+                );
+              }
 
-            if (filter.type === "numeric") {
-              return (
-                <NumericFacet
-                  key={filter.column}
-                  filterKey={filter.column}
-                  label={filter.label}
-                  tooltip={filter.tooltip}
-                  help={filter.help}
-                  expanded={filter.expanded}
-                  loading={filter.loading}
-                  min={filter.min}
-                  max={filter.max}
-                  value={filter.value}
-                  onChange={filter.onChange}
-                  unit={filter.unit}
-                  isActive={filter.isActive}
-                  onReset={filter.onReset}
-                  isDisabled={filter.isDisabled}
-                  disabledReason={filter.disabledReason}
-                />
-              );
-            }
+              if (filter.type === "numeric") {
+                return (
+                  <NumericFacet
+                    key={filter.column}
+                    filterKey={filter.column}
+                    label={filter.label}
+                    tooltip={filter.tooltip}
+                    help={filter.help}
+                    expanded={filter.expanded}
+                    loading={filter.loading}
+                    min={filter.min}
+                    max={filter.max}
+                    value={filter.value}
+                    onChange={filter.onChange}
+                    unit={filter.unit}
+                    isActive={filter.isActive}
+                    onReset={filter.onReset}
+                    isDisabled={filter.isDisabled}
+                    disabledReason={filter.disabledReason}
+                  />
+                );
+              }
 
-            if (filter.type === "string") {
-              return (
-                <StringFacet
-                  key={filter.column}
-                  filterKey={filter.column}
-                  label={filter.label}
-                  tooltip={filter.tooltip}
-                  help={filter.help}
-                  expanded={filter.expanded}
-                  loading={filter.loading}
-                  value={filter.value}
-                  onChange={filter.onChange}
-                  isActive={filter.isActive}
-                  onReset={filter.onReset}
-                  isDisabled={filter.isDisabled}
-                  disabledReason={filter.disabledReason}
-                />
-              );
-            }
+              if (filter.type === "string") {
+                return (
+                  <StringFacet
+                    key={filter.column}
+                    filterKey={filter.column}
+                    label={filter.label}
+                    tooltip={filter.tooltip}
+                    help={filter.help}
+                    expanded={filter.expanded}
+                    loading={filter.loading}
+                    value={filter.value}
+                    onChange={filter.onChange}
+                    isActive={filter.isActive}
+                    onReset={filter.onReset}
+                    isDisabled={filter.isDisabled}
+                    disabledReason={filter.disabledReason}
+                  />
+                );
+              }
 
-            if (filter.type === "keyValue") {
-              return (
-                <KeyValueFacet
-                  key={filter.column}
-                  filterKey={filter.column}
-                  label={filter.label}
-                  tooltip={filter.tooltip}
-                  help={filter.help}
-                  expanded={filter.expanded}
-                  loading={filter.loading}
-                  keyOptions={filter.keyOptions}
-                  availableValues={filter.availableValues}
-                  value={filter.value}
-                  onChange={filter.onChange}
-                  isActive={filter.isActive}
-                  onReset={filter.onReset}
-                  keyPlaceholder="Name"
-                  isDisabled={filter.isDisabled}
-                  disabledReason={filter.disabledReason}
-                />
-              );
-            }
+              if (filter.type === "keyValue") {
+                return (
+                  <KeyValueFacet
+                    key={filter.column}
+                    filterKey={filter.column}
+                    label={filter.label}
+                    tooltip={filter.tooltip}
+                    help={filter.help}
+                    expanded={filter.expanded}
+                    loading={filter.loading}
+                    keyOptions={filter.keyOptions}
+                    availableValues={filter.availableValues}
+                    value={filter.value}
+                    onChange={filter.onChange}
+                    isActive={filter.isActive}
+                    onReset={filter.onReset}
+                    keyPlaceholder="Name"
+                    isDisabled={filter.isDisabled}
+                    disabledReason={filter.disabledReason}
+                  />
+                );
+              }
 
-            if (filter.type === "numericKeyValue") {
-              return (
-                <NumericKeyValueFacet
-                  key={filter.column}
-                  filterKey={filter.column}
-                  label={filter.label}
-                  tooltip={filter.tooltip}
-                  help={filter.help}
-                  expanded={filter.expanded}
-                  loading={filter.loading}
-                  keyOptions={filter.keyOptions}
-                  value={filter.value}
-                  onChange={filter.onChange}
-                  isActive={filter.isActive}
-                  onReset={filter.onReset}
-                  keyPlaceholder="Name"
-                  isDisabled={filter.isDisabled}
-                  disabledReason={filter.disabledReason}
-                />
-              );
-            }
+              if (filter.type === "numericKeyValue") {
+                return (
+                  <NumericKeyValueFacet
+                    key={filter.column}
+                    filterKey={filter.column}
+                    label={filter.label}
+                    tooltip={filter.tooltip}
+                    help={filter.help}
+                    expanded={filter.expanded}
+                    loading={filter.loading}
+                    keyOptions={filter.keyOptions}
+                    value={filter.value}
+                    onChange={filter.onChange}
+                    isActive={filter.isActive}
+                    onReset={filter.onReset}
+                    keyPlaceholder="Name"
+                    isDisabled={filter.isDisabled}
+                    disabledReason={filter.disabledReason}
+                  />
+                );
+              }
 
-            if (filter.type === "stringKeyValue") {
-              return (
-                <StringKeyValueFacet
-                  key={filter.column}
-                  filterKey={filter.column}
-                  label={filter.label}
-                  tooltip={filter.tooltip}
-                  help={filter.help}
-                  expanded={filter.expanded}
-                  loading={filter.loading}
-                  keyOptions={filter.keyOptions}
-                  value={filter.value}
-                  onChange={filter.onChange}
-                  isActive={filter.isActive}
-                  onReset={filter.onReset}
-                  isDisabled={filter.isDisabled}
-                  disabledReason={filter.disabledReason}
-                />
-              );
-            }
+              if (filter.type === "stringKeyValue") {
+                return (
+                  <StringKeyValueFacet
+                    key={filter.column}
+                    filterKey={filter.column}
+                    label={filter.label}
+                    tooltip={filter.tooltip}
+                    help={filter.help}
+                    expanded={filter.expanded}
+                    loading={filter.loading}
+                    keyOptions={filter.keyOptions}
+                    value={filter.value}
+                    onChange={filter.onChange}
+                    isActive={filter.isActive}
+                    onReset={filter.onReset}
+                    isDisabled={filter.isDisabled}
+                    disabledReason={filter.disabledReason}
+                  />
+                );
+              }
 
-            return null;
-          })}
-        </Accordion>
+              return null;
+            })}
+          </Accordion>
+        )}
       </div>
     </div>
   );
