@@ -53,9 +53,19 @@ Generally available on the v4 events tables (no opt-in). Based on the
 - `has:endTime` / `-has:endTime` null checks
 - full-text search (see below): bare text, or `input:`/`output:`/`name:`/`id:`
 
-Cross-field OR, negated groups, and other shapes the flat contract cannot
-represent are commit-blocking diagnostics, not silent drops. There is no
+Cross-field `OR` and bracket grouping are supported (Search/Filter v2): they
+lower to a nested `FilterExpression` tree (`astToFilterInput`) instead of the
+flat `FilterState`, and the events tRPC `filter` input accepts both via
+`filterInput`. A query that is a pure AND of leaves still lowers to a flat
+`FilterState` (so the facet sidebar owns it); only a cross-field OR / bracket
+group produces a tree, which puts the facet sidebar into a read-only "advanced
+filter" state (the bar is the editor). Negated groups (`NOT (...)`) and free
+text inside an OR remain commit-blocking diagnostics, not silent drops — the
+backend has no general NOT, and free text is a global AND term. There is no
 FTS `*` operator: the events tRPC filter contract has none.
+
+`OR`/`AND`/`NOT`/`( )` are the **uppercase** grammar operators. Lowercase
+`or`/`and`/`not` stay reserved free-text tokens (quote them to search literally).
 
 **Full-text search.** It matches as a **contiguous substring** server-side
 (`clickhouse-sql/search.ts`, `ILIKE %query%`) and is expressed field-style:
@@ -97,12 +107,13 @@ two remaining multi-scope states still drop their id channel on the next commit:
 two without a real per-column "all fields" scope — deferred past beta. Trigger is
 narrow (a legacy URL from the old dropdown + the bar enabled + a commit).
 
-Operator-looking tokens that aren't supported yet are **reserved** — they emit
-an explicit "not supported yet" diagnostic instead of silently becoming free
-text: `!`, lowercase `not`/`or`/`and` (use `-field:value` to exclude;
-`field:(A OR B)` for one field's values). Quote a reserved word (`"or"`) to
-search for it as literal text. (Top-level grouping with `(` `)` is tracked as a
-follow-up.)
+Operator-looking tokens that aren't supported are **reserved** — they emit an
+explicit "not supported" diagnostic instead of silently becoming free text:
+`!`, lowercase `not` (use `-field:value` to exclude). Lowercase `or`/`and` are
+reserved too — use uppercase `OR`/`AND` for the boolean operators, or
+`field:(A OR B)` for one field's values. Quote a reserved word (`"or"`) to
+search for it as literal text. Top-level grouping with `( )` and cross-field
+`OR` now lower to a nested expression tree (see Query language above).
 
 ## Data flow (one source of truth, one direction)
 
