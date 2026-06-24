@@ -28,6 +28,7 @@ import { type LangfuseColumnDef } from "@/src/components/table/types";
 import {
   type ObservationLevelType,
   type FilterState,
+  type FilterInput,
   BatchExportTableName,
   type ObservationType,
   TableViewPresetTableName,
@@ -434,8 +435,9 @@ export default function ObservationsEventsTable({
   const queryFilterRef = useRef(queryFilter);
   queryFilterRef.current = queryFilter;
 
-  const setFiltersWrapper = useCallback(
-    (filters: FilterState) => queryFilterRef.current?.setFilterState(filters),
+  const setFilterExpressionWrapper = useCallback(
+    (filterInput: FilterInput) =>
+      queryFilterRef.current?.setFilterExpression(filterInput),
     [],
   );
 
@@ -448,11 +450,11 @@ export default function ObservationsEventsTable({
     {
       projectId,
       enabled: searchBarMode,
-      filterState: queryFilter.explicitFilterState,
+      filterExpression: queryFilter.explicitFilterExpression,
       searchQuery,
       searchType,
       observed: observedOptions,
-      setFilterState: setFiltersWrapper,
+      setFilterExpression: setFilterExpressionWrapper,
       setSearchQuery,
       setSearchType,
     },
@@ -494,15 +496,39 @@ export default function ObservationsEventsTable({
       ]
     : [];
 
-  // The sidebar's effective filter state is the single source of truth in both
-  // modes — the search bar syncs into it rather than replacing it.
-  const combinedFilterState = queryFilter.effectiveFilterState
-    .concat(dateRangeFilter)
+  // The sidebar's effective filter is the single source of truth in both modes
+  // — the search bar syncs into it rather than replacing it. It may be a nested
+  // tree (v2), so the page-scope filters (time range, userId, sessionId) are
+  // AND-conjoined as an OUTER AND wrapping it, never spliced inside (which would
+  // widen a user OR). For a flat filter this is just an array concat.
+  const pageScopeFilters: FilterState = dateRangeFilter
     .concat(userIdFilter)
     .concat(sessionIdFilter);
+  const combinedFilterState: FilterInput = Array.isArray(
+    queryFilter.effectiveFilterExpression,
+  )
+    ? queryFilter.effectiveFilterExpression.concat(pageScopeFilters)
+    : pageScopeFilters.length > 0
+      ? {
+          type: "group",
+          operator: "AND",
+          conditions: [
+            queryFilter.effectiveFilterExpression,
+            ...pageScopeFilters,
+          ],
+        }
+      : queryFilter.effectiveFilterExpression;
 
   // Use external filter state if provided, otherwise use combined filter state
-  const filterState = externalFilterState || combinedFilterState;
+  const filterState: FilterInput = externalFilterState || combinedFilterState;
+
+  // Bulk actions (export, run-eval, add-to-dataset) consume a flat FilterState.
+  // A nested tree (cross-field OR) falls back to no user filter on that path —
+  // selection-based runs over specific rows are unaffected.
+  // TODO(LFE-10421 follow-up): widen batch actions to FilterInput.
+  const batchActionFilterState: FilterState = Array.isArray(filterState)
+    ? filterState
+    : [];
 
   // Use the custom hook for observations data fetching
   const {
@@ -1350,7 +1376,7 @@ export default function ObservationsEventsTable({
     projectId,
     stateUpdaters: {
       setOrderBy: setOrderByState,
-      setFilters: setFiltersWrapper,
+      setFilters: setFilterExpressionWrapper,
       setExpandedFilters: queryFilter.onExpandedChange,
       setColumnOrder: setColumnOrder,
       setColumnVisibility: setColumnVisibilityState,
@@ -1566,7 +1592,7 @@ export default function ObservationsEventsTable({
                 <BatchExportTableButton
                   {...{
                     projectId,
-                    filterState,
+                    filterState: batchActionFilterState,
                     orderByState,
                     searchQuery,
                     searchType,
@@ -1737,7 +1763,7 @@ export default function ObservationsEventsTable({
           projectId={projectId}
           selectedObservationIds={selectedObservationIds}
           query={{
-            filter: filterState,
+            filter: batchActionFilterState,
             orderBy: orderByState,
             searchQuery: searchQuery ?? undefined,
             searchType,
@@ -1758,7 +1784,7 @@ export default function ObservationsEventsTable({
           projectId={projectId}
           selectedObservationIds={selectedObservationIds}
           query={{
-            filter: filterState,
+            filter: batchActionFilterState,
             orderBy: orderByState,
             searchQuery: searchQuery ?? undefined,
             searchType,

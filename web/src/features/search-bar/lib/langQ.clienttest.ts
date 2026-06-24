@@ -390,6 +390,8 @@ describe("validateQuery", () => {
       "isRootObservation:true",
       "-isRootObservation:true",
       "level:ERROR OR level:WARNING",
+      "level:ERROR OR env:dev", // cross-field OR (lowers to a nested expression)
+      "(level:ERROR OR name:checkout) -environment:prod", // grouped cross-field OR
     ]) {
       const r = validateQuery(text);
       expect(r.valid, `expected valid: ${text}`).toBe(true);
@@ -398,7 +400,6 @@ describe("validateQuery", () => {
 
   it("rejects forms the flat filter contract cannot represent", () => {
     for (const text of [
-      "level:ERROR OR env:dev", // cross-field OR
       "NOT (level:ERROR env:dev)", // negated group
       "-latency:2", // negated numeric equality
       "-input:prefix*", // negated starts-with
