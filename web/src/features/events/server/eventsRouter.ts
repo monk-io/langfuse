@@ -5,6 +5,8 @@ import {
   protectedProjectProcedure,
 } from "@/src/server/api/trpc";
 import {
+  getFilterExpressionLeafFilters,
+  normalizeFilterExpressionInput,
   type OrderByState,
   normalizeOrderByForTable,
   paginationZod,
@@ -30,7 +32,7 @@ import {
   getAgentGraphDataFromEventsTable,
   getObservationsForTraceFromEventsTable,
   MAX_OBSERVATIONS_PER_TRACE,
-  applyCommentFilters,
+  applyCommentFiltersToFilterInput,
   getLatestSdkVersionInfoFromEvents,
 } from "@langfuse/shared/src/server";
 
@@ -81,12 +83,13 @@ export const eventsRouter = createTRPCRouter({
   all: protectedProjectProcedure
     .input(GetAllEventsInput)
     .query(async ({ input, ctx }) => {
-      const { filterState, hasNoMatches } = await applyCommentFilters({
-        filterState: input.filter ?? [],
-        prisma: ctx.prisma,
-        projectId: ctx.session.projectId,
-        objectType: "OBSERVATION",
-      });
+      const { filterState, hasNoMatches } =
+        await applyCommentFiltersToFilterInput({
+          filterState: input.filter,
+          prisma: ctx.prisma,
+          projectId: ctx.session.projectId,
+          objectType: "OBSERVATION",
+        });
 
       if (hasNoMatches) {
         return { observations: [], hasMore: false };
@@ -118,12 +121,13 @@ export const eventsRouter = createTRPCRouter({
   countAll: protectedProjectProcedure
     .input(EventsTableOptions)
     .query(async ({ input, ctx }) => {
-      const { filterState, hasNoMatches } = await applyCommentFilters({
-        filterState: input.filter ?? [],
-        prisma: ctx.prisma,
-        projectId: ctx.session.projectId,
-        objectType: "OBSERVATION",
-      });
+      const { filterState, hasNoMatches } =
+        await applyCommentFiltersToFilterInput({
+          filterState: input.filter,
+          prisma: ctx.prisma,
+          projectId: ctx.session.projectId,
+          objectType: "OBSERVATION",
+        });
 
       if (hasNoMatches) {
         return { totalCount: 0 };
@@ -400,12 +404,16 @@ export const addAttributesToSpan = ({
 }) => {
   span.setAttribute("project_id", input.projectId);
 
-  // Only process filter if it exists (not present in GetEventFilterOptionsInput)
+  // Only process filter if it exists (not present in GetEventFilterOptionsInput).
+  // The filter may be a nested expression tree, so flatten to leaves first.
   if ("filter" in input && input.filter) {
-    const startTimeFilter = input.filter.find(
+    const filterLeaves = getFilterExpressionLeafFilters(
+      normalizeFilterExpressionInput(input.filter),
+    );
+    const startTimeFilter = filterLeaves.find(
       (f) => f.column === "startTime" && f.type === "datetime",
     );
-    const endTimeFilter = input.filter.find(
+    const endTimeFilter = filterLeaves.find(
       (f) => f.column === "endTime" && f.type === "datetime",
     );
 
@@ -418,7 +426,7 @@ export const addAttributesToSpan = ({
       span.setAttribute("duration_minutes", durationMs / 60000);
     }
 
-    input.filter.forEach((f) => {
+    filterLeaves.forEach((f) => {
       if (f.value !== undefined) {
         span.setAttribute(f.column, String(f.value));
       }

@@ -1,5 +1,9 @@
 import type { PrismaClient } from "../../db";
-import { type singleFilter } from "../../interfaces/filters";
+import {
+  normalizeFilterExpressionInput,
+  type singleFilter,
+} from "../../interfaces/filters";
+import { type FilterExpression, type FilterInput } from "../../types";
 import {
   type CommentObjectType,
   type CommentCountOperator,
@@ -322,5 +326,206 @@ export async function applyCommentFilters({
     ],
     hasNoMatches: false,
     matchingIds: objectIdsFromComments,
+  };
+}
+
+type CommentFilterRewriteResult = {
+  expression?: FilterExpression;
+  hasNoMatches: boolean;
+  matchingIds: string[] | null;
+};
+
+function isCommentFilter(filter: z.infer<typeof singleFilter>): boolean {
+  return (
+    ((filter.type === "number" || filter.type === "datetime") &&
+      filter.column === "commentCount") ||
+    (filter.type === "string" && filter.column === "commentContent")
+  );
+}
+
+/**
+ * Resolve comment pseudo-filters (`commentCount`/`commentContent`) anywhere in a
+ * nested {@link FilterExpression}. Each comment leaf is resolved to a set of
+ * matching object IDs via Postgres and rewritten to an `id any of [...]`
+ * condition; the surrounding tree structure (AND/OR groups) is preserved.
+ *
+ * Semantics of an empty match within a group:
+ * - inside AND: the whole group has no matches (AND with an impossible term);
+ * - inside OR: that branch drops, the rest of the OR still applies.
+ */
+async function rewriteCommentFiltersInExpression({
+  filterExpression,
+  prisma,
+  projectId,
+  objectType,
+  idColumn,
+}: {
+  filterExpression?: FilterExpression;
+  prisma: PrismaClient;
+  projectId: string;
+  objectType: CommentObjectType;
+  idColumn: string;
+}): Promise<CommentFilterRewriteResult> {
+  if (!filterExpression) {
+    return {
+      expression: undefined,
+      hasNoMatches: false,
+      matchingIds: null,
+    };
+  }
+
+  if (filterExpression.type !== "group") {
+    if (!isCommentFilter(filterExpression)) {
+      return {
+        expression: filterExpression,
+        hasNoMatches: false,
+        matchingIds: null,
+      };
+    }
+
+    const result = await applyCommentFilters({
+      filterState: [filterExpression],
+      prisma,
+      projectId,
+      objectType,
+      idColumn,
+    });
+
+    return {
+      expression: normalizeFilterExpressionInput(result.filterState),
+      hasNoMatches: result.hasNoMatches,
+      matchingIds: result.matchingIds,
+    };
+  }
+
+  const rewrittenChildren = await Promise.all(
+    filterExpression.conditions.map((condition) =>
+      rewriteCommentFiltersInExpression({
+        filterExpression: condition,
+        prisma,
+        projectId,
+        objectType,
+        idColumn,
+      }),
+    ),
+  );
+
+  if (filterExpression.operator === "AND") {
+    if (rewrittenChildren.some((child) => child.hasNoMatches)) {
+      return {
+        expression: undefined,
+        hasNoMatches: true,
+        matchingIds: [],
+      };
+    }
+
+    const expressions = rewrittenChildren.flatMap((child) =>
+      child.expression ? [child.expression] : [],
+    );
+
+    if (expressions.length === 0) {
+      return {
+        expression: undefined,
+        hasNoMatches: false,
+        matchingIds: null,
+      };
+    }
+
+    if (expressions.length === 1) {
+      return {
+        expression: expressions[0],
+        hasNoMatches: false,
+        matchingIds: null,
+      };
+    }
+
+    return {
+      expression: {
+        type: "group",
+        operator: "AND",
+        conditions: expressions,
+      },
+      hasNoMatches: false,
+      matchingIds: null,
+    };
+  }
+
+  // OR group: a non-comment child with no expression would match everything, so
+  // the whole OR matches everything — drop the comment-derived narrowing.
+  if (
+    rewrittenChildren.some((child) => !child.hasNoMatches && !child.expression)
+  ) {
+    return {
+      expression: undefined,
+      hasNoMatches: false,
+      matchingIds: null,
+    };
+  }
+
+  const expressions = rewrittenChildren.flatMap((child) =>
+    !child.hasNoMatches && child.expression ? [child.expression] : [],
+  );
+
+  if (expressions.length === 0) {
+    return {
+      expression: undefined,
+      hasNoMatches: true,
+      matchingIds: [],
+    };
+  }
+
+  if (expressions.length === 1) {
+    return {
+      expression: expressions[0],
+      hasNoMatches: false,
+      matchingIds: null,
+    };
+  }
+
+  return {
+    expression: {
+      type: "group",
+      operator: "OR",
+      conditions: expressions,
+    },
+    hasNoMatches: false,
+    matchingIds: null,
+  };
+}
+
+/**
+ * {@link applyCommentFilters} for the nested filter contract. Accepts a flat
+ * {@link FilterInput} array or a nested expression, resolves comment filters
+ * recursively, and returns the rewritten {@link FilterExpression}.
+ */
+export async function applyCommentFiltersToFilterInput({
+  filterState,
+  prisma,
+  projectId,
+  objectType,
+  idColumn = "id",
+}: {
+  filterState: FilterInput | undefined;
+  prisma: PrismaClient;
+  projectId: string;
+  objectType: CommentObjectType;
+  idColumn?: string;
+}): Promise<{
+  filterState: FilterExpression | undefined;
+  hasNoMatches: boolean;
+  matchingIds: string[] | null;
+}> {
+  const result = await rewriteCommentFiltersInExpression({
+    filterExpression: normalizeFilterExpressionInput(filterState),
+    prisma,
+    projectId,
+    objectType,
+    idColumn,
+  });
+
+  return {
+    filterState: result.expression,
+    hasNoMatches: result.hasNoMatches,
+    matchingIds: result.matchingIds,
   };
 }
