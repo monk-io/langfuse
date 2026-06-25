@@ -1,0 +1,526 @@
+namespace: langfuse
+
+web-base:
+  defines: runnable
+  metadata:
+    name: Langfuse Web Base
+    description: |
+      Reusable Langfuse web component using the public langfuse/langfuse image.
+      Inheriting templates must connect PostgreSQL, ClickHouse, Redis, and an
+      S3-compatible object store such as self-hosted MinIO. Compatible Monk
+      packages include postgresql/db, redis/redis, minio/minio-server, and the
+      local ClickHouse runnable in this template set.
+    tags: langfuse, llmops, observability, component, web
+    website: https://langfuse.com/
+    source: https://github.com/langfuse/langfuse
+    publisher: monk.io
+    private: false
+  variables:
+    langfuse-image-tag:
+      type: string
+      value: "3"
+      description: Public Docker Hub langfuse/langfuse image tag to run.
+    web-port:
+      type: int
+      value: 3000
+      env: PORT
+      description: HTTP port exposed by the Langfuse web container.
+    hostname:
+      type: string
+      value: 0.0.0.0
+      env: HOSTNAME
+      description: Container bind address for Langfuse HTTP server.
+    node-env:
+      type: string
+      value: production
+      env: NODE_ENV
+      description: Node.js runtime environment.
+    nextauth-url:
+      type: string
+      value: ""
+      env: NEXTAUTH_URL
+      description: Public URL used by NextAuth callbacks. Inheriting templates set this to the deployed Langfuse URL.
+    nextauth-secret:
+      type: string
+      value: ""
+      env: NEXTAUTH_SECRET
+      description: Sensitive NextAuth secret. Inheriting production templates must set this with secret("langfuse-nextauth-secret").
+    salt:
+      type: string
+      value: ""
+      env: SALT
+      description: Sensitive API key hashing salt. Inheriting production templates must set this with secret("langfuse-salt").
+    encryption-key:
+      type: string
+      value: ""
+      env: ENCRYPTION_KEY
+      description: Sensitive 64-character hex encryption key. Inheriting production templates must set this with secret("langfuse-encryption-key").
+    database-url:
+      type: string
+      value: ""
+      env: DATABASE_URL
+      description: PostgreSQL connection URL. Inheriting templates build this from a PostgreSQL connection and sensitive password.
+    direct-url:
+      type: string
+      value: <- $database-url
+      env: DIRECT_URL
+      description: Direct PostgreSQL URL used by Prisma migrations; defaults to DATABASE_URL.
+    telemetry-enabled:
+      type: bool
+      value: true
+      env: TELEMETRY_ENABLED
+      description: Enables Langfuse product telemetry.
+    experimental-features-enabled:
+      type: bool
+      value: false
+      env: LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES
+      description: Enables Langfuse experimental features.
+    clickhouse-migration-url:
+      type: string
+      value: ""
+      env: CLICKHOUSE_MIGRATION_URL
+      description: ClickHouse native protocol URL used for migrations.
+    clickhouse-url:
+      type: string
+      value: ""
+      env: CLICKHOUSE_URL
+      description: ClickHouse HTTP URL used by Langfuse.
+    clickhouse-user:
+      type: string
+      value: clickhouse
+      env: CLICKHOUSE_USER
+      description: ClickHouse user name used by Langfuse.
+    clickhouse-password:
+      type: string
+      value: ""
+      env: CLICKHOUSE_PASSWORD
+      description: Sensitive ClickHouse password. Inheriting production templates must set this with secret("langfuse-clickhouse-password").
+    clickhouse-cluster-enabled:
+      type: bool
+      value: false
+      env: CLICKHOUSE_CLUSTER_ENABLED
+      description: Whether Langfuse should use ClickHouse cluster-aware migrations and queries.
+    redis-host:
+      type: string
+      value: ""
+      env: REDIS_HOST
+      description: Redis hostname resolved from a Monk connection by inheriting templates.
+    redis-port:
+      type: int
+      value: 6379
+      env: REDIS_PORT
+      description: Redis port resolved from a Monk connection by inheriting templates.
+    redis-username:
+      type: string
+      value: default
+      env: REDIS_USERNAME
+      description: Redis username used by Langfuse.
+    redis-auth:
+      type: string
+      value: ""
+      env: REDIS_AUTH
+      description: Sensitive Redis password. Inheriting production templates must set this with secret("langfuse-redis-password").
+    s3-bucket:
+      type: string
+      value: langfuse
+      description: S3-compatible bucket used for Langfuse event, media, and export objects.
+    s3-region:
+      type: string
+      value: auto
+      description: S3 region value passed to Langfuse for S3-compatible storage.
+    s3-access-key-id:
+      type: string
+      value: minio
+      description: S3 access key ID used by Langfuse.
+    s3-secret-access-key:
+      type: string
+      value: ""
+      description: Sensitive S3 secret access key. Inheriting production templates must set this with secret("langfuse-minio-root-password") or provider credentials.
+    s3-endpoint:
+      type: string
+      value: ""
+      description: S3-compatible API endpoint resolved from a Monk connection by inheriting templates.
+    s3-force-path-style:
+      type: bool
+      value: true
+      description: Forces path-style S3 requests for MinIO and compatible self-hosted object stores.
+    s3-batch-export-enabled:
+      type: bool
+      value: false
+      env: LANGFUSE_S3_BATCH_EXPORT_ENABLED
+      description: Enables Langfuse S3 batch exports.
+    s3-event-upload-bucket:
+      type: string
+      value: <- $s3-bucket
+      env: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+      description: S3 bucket used for Langfuse event uploads.
+    s3-event-upload-region:
+      type: string
+      value: <- $s3-region
+      env: LANGFUSE_S3_EVENT_UPLOAD_REGION
+      description: S3 region used for Langfuse event uploads.
+    s3-event-upload-access-key-id:
+      type: string
+      value: <- $s3-access-key-id
+      env: LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID
+      description: S3 access key ID used for Langfuse event uploads.
+    s3-event-upload-secret-access-key:
+      type: string
+      value: <- $s3-secret-access-key
+      env: LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY
+      description: Sensitive S3 secret access key used for Langfuse event uploads.
+    s3-event-upload-endpoint:
+      type: string
+      value: <- $s3-endpoint
+      env: LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT
+      description: S3-compatible endpoint used for Langfuse event uploads.
+    s3-event-upload-force-path-style:
+      type: bool
+      value: <- $s3-force-path-style
+      env: LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE
+      description: Forces path-style S3 event upload requests.
+    s3-media-upload-bucket:
+      type: string
+      value: <- $s3-bucket
+      env: LANGFUSE_S3_MEDIA_UPLOAD_BUCKET
+      description: S3 bucket used for Langfuse media uploads.
+    s3-media-upload-region:
+      type: string
+      value: <- $s3-region
+      env: LANGFUSE_S3_MEDIA_UPLOAD_REGION
+      description: S3 region used for Langfuse media uploads.
+    s3-media-upload-access-key-id:
+      type: string
+      value: <- $s3-access-key-id
+      env: LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID
+      description: S3 access key ID used for Langfuse media uploads.
+    s3-media-upload-secret-access-key:
+      type: string
+      value: <- $s3-secret-access-key
+      env: LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY
+      description: Sensitive S3 secret access key used for Langfuse media uploads.
+    s3-media-upload-endpoint:
+      type: string
+      value: <- $s3-endpoint
+      env: LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT
+      description: S3-compatible endpoint used for Langfuse media uploads.
+    s3-media-upload-force-path-style:
+      type: bool
+      value: <- $s3-force-path-style
+      env: LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE
+      description: Forces path-style S3 media upload requests.
+    s3-batch-export-bucket:
+      type: string
+      value: <- $s3-bucket
+      env: LANGFUSE_S3_BATCH_EXPORT_BUCKET
+      description: S3 bucket used for Langfuse batch exports.
+    s3-batch-export-region:
+      type: string
+      value: <- $s3-region
+      env: LANGFUSE_S3_BATCH_EXPORT_REGION
+      description: S3 region used for Langfuse batch exports.
+    s3-batch-export-access-key-id:
+      type: string
+      value: <- $s3-access-key-id
+      env: LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID
+      description: S3 access key ID used for Langfuse batch exports.
+    s3-batch-export-secret-access-key:
+      type: string
+      value: <- $s3-secret-access-key
+      env: LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY
+      description: Sensitive S3 secret access key used for Langfuse batch exports.
+    s3-batch-export-endpoint:
+      type: string
+      value: <- $s3-endpoint
+      env: LANGFUSE_S3_BATCH_EXPORT_ENDPOINT
+      description: S3-compatible endpoint used for Langfuse batch exports.
+    s3-event-prefix:
+      type: string
+      value: events/
+      env: LANGFUSE_S3_EVENT_UPLOAD_PREFIX
+      description: Prefix for event upload objects in the S3 bucket.
+    s3-media-prefix:
+      type: string
+      value: media/
+      env: LANGFUSE_S3_MEDIA_UPLOAD_PREFIX
+      description: Prefix for media upload objects in the S3 bucket.
+    s3-export-prefix:
+      type: string
+      value: exports/
+      env: LANGFUSE_S3_BATCH_EXPORT_PREFIX
+      description: Prefix for batch export objects in the S3 bucket.
+  containers:
+    web:
+      image: langfuse/langfuse
+      image-tag: <- $langfuse-image-tag
+      restart: unless-stopped
+  services:
+    http:
+      container: web
+      port: <- $web-port
+      protocol: tcp
+      publish: false
+      description: Private Langfuse web HTTP service for Monk connections or ingress in inheriting templates.
+  checks:
+    readiness:
+      code: <- `exec("web", "node", "-e", "const http=require('http');const port=process.env.PORT||3000;const req=http.get({host:'127.0.0.1',port,path:'/api/public/health',timeout:3000},res=>{console.log(res.statusCode);process.exit(res.statusCode===200?0:1)});req.on('error',()=>process.exit(1));req.on('timeout',()=>process.exit(1));") contains?("200")`
+      initialDelay: 30
+      period: 10
+      attempts: 60
+
+worker-base:
+  defines: runnable
+  metadata:
+    name: Langfuse Worker Base
+    description: |
+      Reusable Langfuse worker component using the public
+      langfuse/langfuse-worker image. Inheriting templates must connect the same
+      PostgreSQL, ClickHouse, Redis, and S3-compatible storage used by the web
+      component.
+    tags: langfuse, llmops, observability, component, worker
+    website: https://langfuse.com/
+    source: https://github.com/langfuse/langfuse
+    publisher: monk.io
+    private: false
+  variables:
+    langfuse-worker-image-tag:
+      type: string
+      value: "3"
+      description: Public Docker Hub langfuse/langfuse-worker image tag to run.
+    worker-port:
+      type: int
+      value: 3030
+      env: PORT
+      description: HTTP health port exposed by the Langfuse worker container.
+    nextauth-url:
+      type: string
+      value: ""
+      env: NEXTAUTH_URL
+      description: Public Langfuse URL used where worker tasks need application URL context.
+    nextauth-secret:
+      type: string
+      value: ""
+      env: NEXTAUTH_SECRET
+      description: Sensitive NextAuth secret shared with the web component. Inheriting production templates must set this with secret("langfuse-nextauth-secret").
+    salt:
+      type: string
+      value: ""
+      env: SALT
+      description: Sensitive API key hashing salt shared with the web component. Inheriting production templates must set this with secret("langfuse-salt").
+    encryption-key:
+      type: string
+      value: ""
+      env: ENCRYPTION_KEY
+      description: Sensitive 64-character hex encryption key shared with the web component. Inheriting production templates must set this with secret("langfuse-encryption-key").
+    database-url:
+      type: string
+      value: ""
+      env: DATABASE_URL
+      description: PostgreSQL connection URL. Inheriting templates build this from a PostgreSQL connection and sensitive password.
+    direct-url:
+      type: string
+      value: <- $database-url
+      env: DIRECT_URL
+      description: Direct PostgreSQL URL used by Prisma; defaults to DATABASE_URL.
+    telemetry-enabled:
+      type: bool
+      value: true
+      env: TELEMETRY_ENABLED
+      description: Enables Langfuse product telemetry.
+    experimental-features-enabled:
+      type: bool
+      value: false
+      env: LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES
+      description: Enables Langfuse experimental features.
+    clickhouse-migration-url:
+      type: string
+      value: ""
+      env: CLICKHOUSE_MIGRATION_URL
+      description: ClickHouse native protocol URL used for migrations.
+    clickhouse-url:
+      type: string
+      value: ""
+      env: CLICKHOUSE_URL
+      description: ClickHouse HTTP URL used by Langfuse.
+    clickhouse-user:
+      type: string
+      value: clickhouse
+      env: CLICKHOUSE_USER
+      description: ClickHouse user name used by Langfuse.
+    clickhouse-password:
+      type: string
+      value: ""
+      env: CLICKHOUSE_PASSWORD
+      description: Sensitive ClickHouse password. Inheriting production templates must set this with secret("langfuse-clickhouse-password").
+    clickhouse-cluster-enabled:
+      type: bool
+      value: false
+      env: CLICKHOUSE_CLUSTER_ENABLED
+      description: Whether Langfuse should use ClickHouse cluster-aware migrations and queries.
+    redis-host:
+      type: string
+      value: ""
+      env: REDIS_HOST
+      description: Redis hostname resolved from a Monk connection by inheriting templates.
+    redis-port:
+      type: int
+      value: 6379
+      env: REDIS_PORT
+      description: Redis port resolved from a Monk connection by inheriting templates.
+    redis-username:
+      type: string
+      value: default
+      env: REDIS_USERNAME
+      description: Redis username used by Langfuse.
+    redis-auth:
+      type: string
+      value: ""
+      env: REDIS_AUTH
+      description: Sensitive Redis password. Inheriting production templates must set this with secret("langfuse-redis-password").
+    s3-bucket:
+      type: string
+      value: langfuse
+      description: S3-compatible bucket used for Langfuse event, media, and export objects.
+    s3-region:
+      type: string
+      value: auto
+      description: S3 region value passed to Langfuse for S3-compatible storage.
+    s3-access-key-id:
+      type: string
+      value: minio
+      description: S3 access key ID used by Langfuse.
+    s3-secret-access-key:
+      type: string
+      value: ""
+      description: Sensitive S3 secret access key. Inheriting production templates must set this with secret("langfuse-minio-root-password") or provider credentials.
+    s3-endpoint:
+      type: string
+      value: ""
+      description: S3-compatible API endpoint resolved from a Monk connection by inheriting templates.
+    s3-force-path-style:
+      type: bool
+      value: true
+      description: Forces path-style S3 requests for MinIO and compatible self-hosted object stores.
+    s3-batch-export-enabled:
+      type: bool
+      value: false
+      env: LANGFUSE_S3_BATCH_EXPORT_ENABLED
+      description: Enables Langfuse S3 batch exports.
+    s3-event-upload-bucket:
+      type: string
+      value: <- $s3-bucket
+      env: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+      description: S3 bucket used for Langfuse event uploads.
+    s3-event-upload-region:
+      type: string
+      value: <- $s3-region
+      env: LANGFUSE_S3_EVENT_UPLOAD_REGION
+      description: S3 region used for Langfuse event uploads.
+    s3-event-upload-access-key-id:
+      type: string
+      value: <- $s3-access-key-id
+      env: LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID
+      description: S3 access key ID used for Langfuse event uploads.
+    s3-event-upload-secret-access-key:
+      type: string
+      value: <- $s3-secret-access-key
+      env: LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY
+      description: Sensitive S3 secret access key used for Langfuse event uploads.
+    s3-event-upload-endpoint:
+      type: string
+      value: <- $s3-endpoint
+      env: LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT
+      description: S3-compatible endpoint used for Langfuse event uploads.
+    s3-event-upload-force-path-style:
+      type: bool
+      value: <- $s3-force-path-style
+      env: LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE
+      description: Forces path-style S3 event upload requests.
+    s3-media-upload-bucket:
+      type: string
+      value: <- $s3-bucket
+      env: LANGFUSE_S3_MEDIA_UPLOAD_BUCKET
+      description: S3 bucket used for Langfuse media uploads.
+    s3-media-upload-region:
+      type: string
+      value: <- $s3-region
+      env: LANGFUSE_S3_MEDIA_UPLOAD_REGION
+      description: S3 region used for Langfuse media uploads.
+    s3-media-upload-access-key-id:
+      type: string
+      value: <- $s3-access-key-id
+      env: LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID
+      description: S3 access key ID used for Langfuse media uploads.
+    s3-media-upload-secret-access-key:
+      type: string
+      value: <- $s3-secret-access-key
+      env: LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY
+      description: Sensitive S3 secret access key used for Langfuse media uploads.
+    s3-media-upload-endpoint:
+      type: string
+      value: <- $s3-endpoint
+      env: LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT
+      description: S3-compatible endpoint used for Langfuse media uploads.
+    s3-media-upload-force-path-style:
+      type: bool
+      value: <- $s3-force-path-style
+      env: LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE
+      description: Forces path-style S3 media upload requests.
+    s3-batch-export-bucket:
+      type: string
+      value: <- $s3-bucket
+      env: LANGFUSE_S3_BATCH_EXPORT_BUCKET
+      description: S3 bucket used for Langfuse batch exports.
+    s3-batch-export-region:
+      type: string
+      value: <- $s3-region
+      env: LANGFUSE_S3_BATCH_EXPORT_REGION
+      description: S3 region used for Langfuse batch exports.
+    s3-batch-export-access-key-id:
+      type: string
+      value: <- $s3-access-key-id
+      env: LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID
+      description: S3 access key ID used for Langfuse batch exports.
+    s3-batch-export-secret-access-key:
+      type: string
+      value: <- $s3-secret-access-key
+      env: LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY
+      description: Sensitive S3 secret access key used for Langfuse batch exports.
+    s3-batch-export-endpoint:
+      type: string
+      value: <- $s3-endpoint
+      env: LANGFUSE_S3_BATCH_EXPORT_ENDPOINT
+      description: S3-compatible endpoint used for Langfuse batch exports.
+    s3-event-prefix:
+      type: string
+      value: events/
+      env: LANGFUSE_S3_EVENT_UPLOAD_PREFIX
+      description: Prefix for event upload objects in the S3 bucket.
+    s3-media-prefix:
+      type: string
+      value: media/
+      env: LANGFUSE_S3_MEDIA_UPLOAD_PREFIX
+      description: Prefix for media upload objects in the S3 bucket.
+    s3-export-prefix:
+      type: string
+      value: exports/
+      env: LANGFUSE_S3_BATCH_EXPORT_PREFIX
+      description: Prefix for batch export objects in the S3 bucket.
+  containers:
+    worker:
+      image: langfuse/langfuse-worker
+      image-tag: <- $langfuse-worker-image-tag
+      restart: unless-stopped
+  services:
+    health:
+      container: worker
+      port: <- $worker-port
+      protocol: tcp
+      publish: false
+      description: Private Langfuse worker health service for Monk readiness checks.
+  checks:
+    readiness:
+      code: <- `exec("worker", "node", "-e", "const http=require('http');const port=process.env.PORT||3030;const req=http.get({host:'127.0.0.1',port,path:'/api/health',timeout:3000},res=>{console.log(res.statusCode);process.exit(res.statusCode===200?0:1)});req.on('error',()=>process.exit(1));req.on('timeout',()=>process.exit(1));") contains?("200")`
+      initialDelay: 30
+      period: 10
+      attempts: 60

@@ -1,0 +1,538 @@
+namespace: langfuse
+
+example-postgres:
+  defines: runnable
+  metadata:
+    name: Langfuse Component Example PostgreSQL
+    description: Concrete PostgreSQL backing service for the Langfuse component example.
+    tags: langfuse, postgres, database, example
+    website: https://www.postgresql.org/
+    source: https://github.com/postgres/postgres
+    publisher: monk.io
+    private: false
+  variables:
+    postgres-image-tag:
+      type: string
+      value: "17"
+      description: Public Docker Hub postgres image tag used by the component example.
+    postgres-database:
+      type: string
+      value: langfuse
+      env: POSTGRES_DB
+      description: PostgreSQL database name created for the component example.
+    postgres-user:
+      type: string
+      value: langfuse
+      env: POSTGRES_USER
+      description: PostgreSQL user created for the component example.
+    postgres-password:
+      type: string
+      value: langfuse-example-postgres-password-2026
+      env: POSTGRES_PASSWORD
+      description: Sensitive generated PostgreSQL password used only by the local component example.
+    timezone:
+      type: string
+      value: UTC
+      env: TZ
+      description: Container timezone; Langfuse requires PostgreSQL to run in UTC.
+    postgres-timezone:
+      type: string
+      value: UTC
+      env: PGTZ
+      description: PostgreSQL session timezone; Langfuse requires UTC.
+  containers:
+    postgres:
+      image: postgres
+      image-tag: <- $postgres-image-tag
+      restart: unless-stopped
+      paths:
+        - <- `${volume-path}/langfuse-example/postgres:/var/lib/postgresql/data`
+  services:
+    postgres:
+      container: postgres
+      port: 5432
+      protocol: tcp
+      publish: false
+      description: Private PostgreSQL service consumed by the Langfuse component example.
+example-redis:
+  defines: runnable
+  metadata:
+    name: Langfuse Component Example Redis
+    description: Concrete Redis queue and cache backing service for the Langfuse component example.
+    tags: langfuse, redis, cache, queue, example
+    website: https://redis.io/
+    source: https://github.com/redis/redis
+    publisher: monk.io
+    private: false
+  variables:
+    redis-image-tag:
+      type: string
+      value: 7-alpine
+      description: Public Docker Hub redis image tag used by the component example.
+    redis-password:
+      type: string
+      value: langfuse-example-redis-password-2026
+      env: REDIS_AUTH
+      description: Sensitive generated Redis password used only by the local component example.
+  containers:
+    redis:
+      image: redis
+      image-tag: <- $redis-image-tag
+      restart: unless-stopped
+      paths:
+        - <- `${volume-path}/langfuse-example/redis:/data`
+      bash: redis-server --requirepass "$REDIS_AUTH" --appendonly yes --maxmemory-policy noeviction
+  services:
+    redis:
+      container: redis
+      port: 6379
+      protocol: tcp
+      publish: false
+      description: Private Redis service consumed by the Langfuse component example.
+example-clickhouse:
+  defines: runnable
+  metadata:
+    name: Langfuse Component Example ClickHouse
+    description: Concrete single-node ClickHouse analytics store for the Langfuse component example.
+    tags: langfuse, clickhouse, analytics, example
+    website: https://clickhouse.com/
+    source: https://github.com/ClickHouse/ClickHouse
+    publisher: monk.io
+    private: false
+  variables:
+    clickhouse-image-tag:
+      type: string
+      value: 24.8-alpine
+      description: Public Docker Hub clickhouse/clickhouse-server image tag used by the component example.
+    clickhouse-database:
+      type: string
+      value: default
+      env: CLICKHOUSE_DB
+      description: ClickHouse database initialized for Langfuse.
+    clickhouse-user:
+      type: string
+      value: clickhouse
+      env: CLICKHOUSE_USER
+      description: ClickHouse user initialized for Langfuse.
+    clickhouse-password:
+      type: string
+      value: langfuse-example-clickhouse-password-2026
+      env: CLICKHOUSE_PASSWORD
+      description: Sensitive generated ClickHouse password used only by the local component example.
+    clickhouse-default-access-management:
+      type: string
+      value: "1"
+      env: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+      description: Enables SQL-driven access management for the initialized ClickHouse user.
+  containers:
+    clickhouse:
+      image: clickhouse/clickhouse-server
+      image-tag: <- $clickhouse-image-tag
+      restart: unless-stopped
+      paths:
+        - <- `${volume-path}/langfuse-example/clickhouse/data:/var/lib/clickhouse`
+        - <- `${volume-path}/langfuse-example/clickhouse/log:/var/log/clickhouse-server`
+  services:
+    http:
+      container: clickhouse
+      port: 8123
+      protocol: tcp
+      publish: false
+      description: Private ClickHouse HTTP service consumed by Langfuse.
+    native:
+      container: clickhouse
+      port: 9000
+      protocol: tcp
+      publish: false
+      description: Private ClickHouse native TCP service used for Langfuse migrations.
+example-minio:
+  defines: runnable
+  metadata:
+    name: Langfuse Component Example MinIO
+    description: Concrete S3-compatible object store for the Langfuse component example.
+    tags: langfuse, minio, s3, object-storage, example
+    website: https://min.io/
+    source: https://github.com/minio/minio
+    publisher: monk.io
+    private: false
+  variables:
+    minio-image-tag:
+      type: string
+      value: latest
+      description: Public Docker Hub minio/minio image tag used by the component example.
+    minio-root-user:
+      type: string
+      value: minio
+      env: MINIO_ROOT_USER
+      description: MinIO access key ID used by Langfuse in the component example.
+    minio-root-password:
+      type: string
+      value: langfuse-example-minio-password-2026
+      env: MINIO_ROOT_PASSWORD
+      description: Sensitive generated MinIO root password used only by the local component example.
+    minio-console-port:
+      type: int
+      value: 9001
+      env: MINIO_CONSOLE_PORT
+      description: MinIO management console port inside the container.
+    minio-bucket:
+      type: string
+      value: langfuse
+      env: MINIO_BUCKET
+      description: Bucket directory bootstrapped for Langfuse object storage.
+  containers:
+    minio:
+      image: minio/minio
+      image-tag: <- $minio-image-tag
+      restart: unless-stopped
+      paths:
+        - <- `${volume-path}/langfuse-example/minio:/data`
+      bash: sh -c 'mkdir -p "/data/$MINIO_BUCKET" && minio server --address ":9000" --console-address ":$MINIO_CONSOLE_PORT" /data'
+  services:
+    api:
+      container: minio
+      port: 9000
+      protocol: tcp
+      publish: false
+      description: Private S3-compatible API endpoint consumed by the Langfuse component example.
+    console:
+      container: minio
+      port: <- $minio-console-port
+      protocol: tcp
+      publish: false
+      description: Private MinIO management console endpoint for operators.
+example-web:
+  defines: runnable
+  inherits: langfuse/web-base
+  metadata:
+    name: Langfuse Component Example Web
+    description: Langfuse web component example wired to concrete PostgreSQL, ClickHouse, Redis, and MinIO backing services.
+    tags: langfuse, llmops, observability, example, web
+    website: https://langfuse.com/
+    source: https://github.com/langfuse/langfuse
+    publisher: monk.io
+    private: false
+  variables:
+    nextauth-url:
+      type: string
+      value: http://127.0.0.1:38100
+      env: NEXTAUTH_URL
+      description: Local URL used by the component example.
+    nextauth-secret:
+      type: string
+      value: langfuse-example-nextauth-secret-2026
+      env: NEXTAUTH_SECRET
+      description: Sensitive generated NextAuth secret used only by the local component example.
+    salt:
+      type: string
+      value: langfuse-example-salt-2026
+      env: SALT
+      description: Sensitive generated API key salt used only by the local component example.
+    encryption-key:
+      type: string
+      value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      env: ENCRYPTION_KEY
+      description: Sensitive local-only 64-character hex encryption key for the component example.
+    postgres-host:
+      type: string
+      value: <- connection-hostname("database")
+      description: PostgreSQL hostname resolved from Monk connection.
+    postgres-port:
+      type: int
+      value: <- connection-port("database")
+      description: PostgreSQL port resolved from Monk connection.
+    postgres-user:
+      type: string
+      value: langfuse
+      description: PostgreSQL user used by the component example.
+    postgres-database:
+      type: string
+      value: langfuse
+      description: PostgreSQL database used by the component example.
+    postgres-password:
+      type: string
+      value: langfuse-example-postgres-password-2026
+      description: Sensitive generated PostgreSQL password shared with the component example database.
+    database-url:
+      type: string
+      value: <- `postgresql://${postgres-user}:${postgres-password}@${postgres-host}:${postgres-port}/${postgres-database}`
+      env: DATABASE_URL
+      description: PostgreSQL connection URL built from the component example database connection.
+    clickhouse-host:
+      type: string
+      value: <- connection-hostname("clickhouse-http")
+      description: ClickHouse HTTP hostname resolved from Monk connection.
+    clickhouse-native-host:
+      type: string
+      value: <- connection-hostname("clickhouse-native")
+      description: ClickHouse native hostname resolved from Monk connection.
+    clickhouse-http-port:
+      type: int
+      value: <- connection-port("clickhouse-http")
+      description: ClickHouse HTTP port resolved from Monk connection.
+    clickhouse-native-port:
+      type: int
+      value: <- connection-port("clickhouse-native")
+      description: ClickHouse native TCP port resolved from Monk connection.
+    clickhouse-password:
+      type: string
+      value: langfuse-example-clickhouse-password-2026
+      env: CLICKHOUSE_PASSWORD
+      description: Sensitive generated ClickHouse password shared with the component example ClickHouse service.
+    clickhouse-migration-url:
+      type: string
+      value: <- `clickhouse://${clickhouse-native-host}:${clickhouse-native-port}`
+      env: CLICKHOUSE_MIGRATION_URL
+      description: ClickHouse native protocol URL built from Monk connection.
+    clickhouse-url:
+      type: string
+      value: <- `http://${clickhouse-host}:${clickhouse-http-port}`
+      env: CLICKHOUSE_URL
+      description: ClickHouse HTTP URL built from Monk connection.
+    redis-host:
+      type: string
+      value: <- connection-hostname("redis")
+      env: REDIS_HOST
+      description: Redis hostname resolved from Monk connection.
+    redis-port:
+      type: int
+      value: <- connection-port("redis")
+      env: REDIS_PORT
+      description: Redis port resolved from Monk connection.
+    redis-auth:
+      type: string
+      value: langfuse-example-redis-password-2026
+      env: REDIS_AUTH
+      description: Sensitive generated Redis password shared with the component example Redis service.
+    s3-access-key-id:
+      type: string
+      value: minio
+      description: MinIO access key ID used by the component example.
+    s3-secret-access-key:
+      type: string
+      value: langfuse-example-minio-password-2026
+      description: Sensitive generated MinIO password shared with the component example object store.
+    minio-host:
+      type: string
+      value: <- connection-hostname("minio")
+      description: MinIO hostname resolved from Monk connection.
+    minio-port:
+      type: int
+      value: <- connection-port("minio")
+      description: MinIO S3 API port resolved from Monk connection.
+    s3-endpoint:
+      type: string
+      value: <- `http://${minio-host}:${minio-port}`
+      description: S3-compatible API endpoint built from Monk connection.
+  services:
+    http:
+      container: web
+      port: <- $web-port
+      host-port: 38100
+      protocol: tcp
+      description: Local Langfuse web HTTP service published for external verification of the component example.
+  connections:
+    database:
+      target: langfuse/example-postgres
+      service: postgres
+      description: PostgreSQL backing service connected to the component example web container.
+    redis:
+      target: langfuse/example-redis
+      service: redis
+      description: Redis backing service connected to the component example web container.
+    clickhouse-http:
+      target: langfuse/example-clickhouse
+      service: http
+      description: ClickHouse HTTP backing service connected to the component example web container.
+    clickhouse-native:
+      target: langfuse/example-clickhouse
+      service: native
+      description: ClickHouse native TCP backing service connected to the component example web container.
+    minio:
+      target: langfuse/example-minio
+      service: api
+      description: MinIO S3 API backing service connected to the component example web container.
+  depends:
+    wait-for:
+      runnables:
+        - langfuse/example-postgres
+        - langfuse/example-redis
+        - langfuse/example-clickhouse
+        - langfuse/example-minio
+
+example-worker:
+  defines: runnable
+  inherits: langfuse/worker-base
+  metadata:
+    name: Langfuse Component Example Worker
+    description: Langfuse worker component example wired to the same concrete services as the example web component.
+    tags: langfuse, llmops, observability, example, worker
+    website: https://langfuse.com/
+    source: https://github.com/langfuse/langfuse
+    publisher: monk.io
+    private: false
+  variables:
+    nextauth-url:
+      type: string
+      value: http://127.0.0.1:38100
+      env: NEXTAUTH_URL
+      description: Local URL used by the component example worker.
+    nextauth-secret:
+      type: string
+      value: langfuse-example-nextauth-secret-2026
+      env: NEXTAUTH_SECRET
+      description: Sensitive generated NextAuth secret shared with the component example web container.
+    salt:
+      type: string
+      value: langfuse-example-salt-2026
+      env: SALT
+      description: Sensitive generated API key salt shared with the component example web container.
+    encryption-key:
+      type: string
+      value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      env: ENCRYPTION_KEY
+      description: Sensitive local-only encryption key shared with the component example web container.
+    postgres-host:
+      type: string
+      value: <- connection-hostname("database")
+      description: PostgreSQL hostname resolved from Monk connection.
+    postgres-port:
+      type: int
+      value: <- connection-port("database")
+      description: PostgreSQL port resolved from Monk connection.
+    postgres-user:
+      type: string
+      value: langfuse
+      description: PostgreSQL user used by the component example.
+    postgres-database:
+      type: string
+      value: langfuse
+      description: PostgreSQL database used by the component example.
+    postgres-password:
+      type: string
+      value: langfuse-example-postgres-password-2026
+      description: Sensitive generated PostgreSQL password shared with the component example database.
+    database-url:
+      type: string
+      value: <- `postgresql://${postgres-user}:${postgres-password}@${postgres-host}:${postgres-port}/${postgres-database}`
+      env: DATABASE_URL
+      description: PostgreSQL connection URL built from the component example database connection.
+    clickhouse-host:
+      type: string
+      value: <- connection-hostname("clickhouse-http")
+      description: ClickHouse HTTP hostname resolved from Monk connection.
+    clickhouse-native-host:
+      type: string
+      value: <- connection-hostname("clickhouse-native")
+      description: ClickHouse native hostname resolved from Monk connection.
+    clickhouse-http-port:
+      type: int
+      value: <- connection-port("clickhouse-http")
+      description: ClickHouse HTTP port resolved from Monk connection.
+    clickhouse-native-port:
+      type: int
+      value: <- connection-port("clickhouse-native")
+      description: ClickHouse native TCP port resolved from Monk connection.
+    clickhouse-password:
+      type: string
+      value: langfuse-example-clickhouse-password-2026
+      env: CLICKHOUSE_PASSWORD
+      description: Sensitive generated ClickHouse password shared with the component example ClickHouse service.
+    clickhouse-migration-url:
+      type: string
+      value: <- `clickhouse://${clickhouse-native-host}:${clickhouse-native-port}`
+      env: CLICKHOUSE_MIGRATION_URL
+      description: ClickHouse native protocol URL built from Monk connection.
+    clickhouse-url:
+      type: string
+      value: <- `http://${clickhouse-host}:${clickhouse-http-port}`
+      env: CLICKHOUSE_URL
+      description: ClickHouse HTTP URL built from Monk connection.
+    redis-host:
+      type: string
+      value: <- connection-hostname("redis")
+      env: REDIS_HOST
+      description: Redis hostname resolved from Monk connection.
+    redis-port:
+      type: int
+      value: <- connection-port("redis")
+      env: REDIS_PORT
+      description: Redis port resolved from Monk connection.
+    redis-auth:
+      type: string
+      value: langfuse-example-redis-password-2026
+      env: REDIS_AUTH
+      description: Sensitive generated Redis password shared with the component example Redis service.
+    s3-access-key-id:
+      type: string
+      value: minio
+      description: MinIO access key ID used by the component example.
+    s3-secret-access-key:
+      type: string
+      value: langfuse-example-minio-password-2026
+      description: Sensitive generated MinIO password shared with the component example object store.
+    minio-host:
+      type: string
+      value: <- connection-hostname("minio")
+      description: MinIO hostname resolved from Monk connection.
+    minio-port:
+      type: int
+      value: <- connection-port("minio")
+      description: MinIO S3 API port resolved from Monk connection.
+    s3-endpoint:
+      type: string
+      value: <- `http://${minio-host}:${minio-port}`
+      description: S3-compatible API endpoint built from Monk connection.
+  services:
+    health:
+      container: worker
+      port: <- $worker-port
+      host-port: 38130
+      protocol: tcp
+      description: Local Langfuse worker health service published for external verification of the component example.
+  connections:
+    database:
+      target: langfuse/example-postgres
+      service: postgres
+      description: PostgreSQL backing service connected to the component example worker.
+    redis:
+      target: langfuse/example-redis
+      service: redis
+      description: Redis backing service connected to the component example worker.
+    clickhouse-http:
+      target: langfuse/example-clickhouse
+      service: http
+      description: ClickHouse HTTP backing service connected to the component example worker.
+    clickhouse-native:
+      target: langfuse/example-clickhouse
+      service: native
+      description: ClickHouse native TCP backing service connected to the component example worker.
+    minio:
+      target: langfuse/example-minio
+      service: api
+      description: MinIO S3 API backing service connected to the component example worker.
+  depends:
+    wait-for:
+      runnables:
+        - langfuse/example-postgres
+        - langfuse/example-redis
+        - langfuse/example-clickhouse
+        - langfuse/example-minio
+
+example:
+  defines: process-group
+  metadata:
+    name: Langfuse Component Example
+    description: Component example that inherits the reusable Langfuse base runnables and wires concrete PostgreSQL, ClickHouse, Redis, and MinIO services.
+    tags: langfuse, llmops, observability, example, component
+    website: https://langfuse.com/
+    source: https://github.com/langfuse/langfuse
+    publisher: monk.io
+    private: false
+  runnable-list:
+    - langfuse/example-postgres
+    - langfuse/example-redis
+    - langfuse/example-clickhouse
+    - langfuse/example-minio
+    - langfuse/example-web
+    - langfuse/example-worker
