@@ -45,8 +45,12 @@ example-postgres:
       image: postgres
       image-tag: <- $postgres-image-tag
       restart: unless-stopped
-      paths:
-        - <- `${volume-path}/langfuse-example/postgres:/var/lib/postgresql/data`
+      mounted-volumes:
+        pgdata:
+          path: /var/lib/postgresql/data
+  volumes:
+    pgdata:
+      kind: local
   services:
     postgres:
       container: postgres
@@ -79,9 +83,13 @@ example-redis:
       image: redis
       image-tag: <- $redis-image-tag
       restart: unless-stopped
-      paths:
-        - <- `${volume-path}/langfuse-example/redis:/data`
+      mounted-volumes:
+        redis-data:
+          path: /data
       bash: redis-server --requirepass "$REDIS_AUTH" --appendonly yes --maxmemory-policy noeviction
+  volumes:
+    redis-data:
+      kind: local
   services:
     redis:
       container: redis
@@ -129,9 +137,16 @@ example-clickhouse:
       image: clickhouse/clickhouse-server
       image-tag: <- $clickhouse-image-tag
       restart: unless-stopped
-      paths:
-        - <- `${volume-path}/langfuse-example/clickhouse/data:/var/lib/clickhouse`
-        - <- `${volume-path}/langfuse-example/clickhouse/log:/var/log/clickhouse-server`
+      mounted-volumes:
+        clickhouse-data:
+          path: /var/lib/clickhouse
+        clickhouse-logs:
+          path: /var/log/clickhouse-server
+  volumes:
+    clickhouse-data:
+      kind: local
+    clickhouse-logs:
+      kind: local
   services:
     http:
       container: clickhouse
@@ -185,9 +200,13 @@ example-minio:
       image: minio/minio
       image-tag: <- $minio-image-tag
       restart: unless-stopped
-      paths:
-        - <- `${volume-path}/langfuse-example/minio:/data`
+      mounted-volumes:
+        minio-data:
+          path: /data
       bash: sh -c 'mkdir -p "/data/$MINIO_BUCKET" && minio server --address ":9000" --console-address ":$MINIO_CONSOLE_PORT" /data'
+  volumes:
+    minio-data:
+      kind: local
   services:
     api:
       container: minio
